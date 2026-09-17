@@ -12,7 +12,7 @@ Designed with strict hallucination prevention guardrails: if a question cannot b
 
 ---
 
-## 💡 Use Cases
+##  Use Cases
 
 - **Internal Policy & Employee Handbook Q&A**: Upload HR policies, benefits guides, or leave documents for instant, accurate answers with exact page attributions.
 - **Legal & Compliance Document Analysis**: Search software licenses, terms of service, and contract clauses without reading through long PDFs manually.
@@ -21,7 +21,7 @@ Designed with strict hallucination prevention guardrails: if a question cannot b
 
 ---
 
-## ⚙️ How It Works (Pipeline Architecture)
+##  How It Works (Pipeline Architecture)
 
 ```text
                   PDF / TXT Document Upload
@@ -70,7 +70,7 @@ Designed with strict hallucination prevention guardrails: if a question cannot b
 
 ---
 
-## 🛠️ Tech Stack & Selection Rationale
+##  Tech Stack & Selection Rationale
 
 | Technology | Purpose | Rationale |
 | :--- | :--- | :--- |
@@ -84,7 +84,7 @@ Designed with strict hallucination prevention guardrails: if a question cannot b
 
 ---
 
-## 📋 System Requirements & Prerequisites
+##  System Requirements & Prerequisites
 
 ### Prerequisites
 - **Operating System**: Windows 10/11, macOS, or Linux.
@@ -95,7 +95,7 @@ Designed with strict hallucination prevention guardrails: if a question cannot b
 
 ---
 
-## 🚀 Installation & Setup Guide
+##  Installation & Setup Guide
 
 ### 1. Clone the Repository
 
@@ -267,7 +267,7 @@ curl -X POST "http://127.0.0.1:8000/query" \
 
 ---
 
-## 🧪 Running Tests & Evaluation
+##  Running Tests & Evaluation
 
 ### Run Pytest Automated Suite
 Runs unit tests covering direct answer retrieval, paraphrased queries, unknown question handling, multiple chunk retrieval, and invalid file upload handling.
@@ -291,7 +291,7 @@ python evaluation/evaluate.py
 
 ---
 
-## 📌 Limitations & Future Roadmap
+##  Limitations & Future Roadmap
 
 ### Current MVP Limitations
 - **No OCR Support**: Scanned image PDFs without text layers return a 400 validation error.
@@ -306,6 +306,6 @@ python evaluation/evaluate.py
 
 ---
 
-## 📜 License
+##  License
 
 This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
