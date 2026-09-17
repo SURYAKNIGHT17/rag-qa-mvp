@@ -1,5 +1,8 @@
+import os
 from fastapi import FastAPI, UploadFile, File, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from app.models import (
     UploadResponse,
     QueryRequest,
@@ -28,12 +31,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Mount Static Files Directory
+if os.path.exists("static"):
+    app.mount("/static", StaticFiles(directory="static"), name="static")
+
 
 @app.api_route("/", methods=["GET", "HEAD"])
 def root():
     """
-    Root endpoint for browser sanity checks and navigation.
+    Serves the modern RAG QA Web Application UI.
     """
+    if os.path.exists("static/index.html"):
+        return FileResponse("static/index.html")
     return {
         "message": "RAG Question Answering System API is running.",
         "docs_url": "http://127.0.0.1:8000/docs",
