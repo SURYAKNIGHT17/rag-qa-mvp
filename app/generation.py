@@ -29,7 +29,7 @@ Question:
 def generate_grounded_answer(question: str, sources: List[SourceChunk]) -> str:
     """
     Generates a grounded answer using retrieved source chunks.
-    If sources are empty, returns UNKNOWN_ANSWER_MESSAGE directly.
+    Supports Google Gemini API, OpenAI API, or Extractive Fallback.
     """
     if not sources:
         return UNKNOWN_ANSWER_MESSAGE
@@ -40,11 +40,20 @@ def generate_grounded_answer(question: str, sources: List[SourceChunk]) -> str:
 
     prompt = GROUNDED_PROMPT_TEMPLATE.format(context=context_str, question=question)
 
-    api_key = settings.LLM_API_KEY or os.getenv("OPENAI_API_KEY", "")
+    gemini_key = settings.GEMINI_API_KEY or os.getenv("GEMINI_API_KEY", os.getenv("GOOGLE_API_KEY", ""))
+    openai_key = settings.LLM_API_KEY or os.getenv("OPENAI_API_KEY", "")
 
-    if api_key:
+    # 1. Google Gemini API
+    if gemini_key:
         try:
-            client = openai.OpenAI(api_key=api_key)
+            return _call_gemini_api(prompt, gemini_key)
+        except Exception as e:
+            return _extractive_fallback_answer(question, sources, error_note=f"Gemini API Error: {str(e)}")
+
+    # 2. OpenAI API
+    if openai_key:
+        try:
+            client = openai.OpenAI(api_key=openai_key)
             response = client.chat.completions.create(
                 model=settings.LLM_MODEL,
                 messages=[
@@ -54,14 +63,45 @@ def generate_grounded_answer(question: str, sources: List[SourceChunk]) -> str:
                 temperature=0.0,
                 max_tokens=500
             )
-            answer = response.choices[0].message.content.strip()
-            return answer
+            return response.choices[0].message.content.strip()
         except Exception as e:
-            # Fallback to extractive answer if API call fails
-            return _extractive_fallback_answer(question, sources, error_note=str(e))
-    else:
-        # Extractive fallback when no LLM API key is provided
-        return _extractive_fallback_answer(question, sources)
+            return _extractive_fallback_answer(question, sources, error_note=f"OpenAI API Error: {str(e)}")
+
+    # 3. Local Extractive Fallback Engine (when no API key is provided)
+    return _extractive_fallback_answer(question, sources)
+
+
+def _call_gemini_api(prompt: str, api_key: str) -> str:
+    """
+    Calls Google Gemini REST API using httpx.
+    """
+    import httpx
+    model_name = settings.GEMINI_MODEL
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
+    headers = {"Content-Type": "application/json"}
+    payload = {
+        "contents": [
+            {
+                "parts": [{"text": prompt}]
+            }
+        ],
+        "generationConfig": {
+            "temperature": 0.0,
+            "maxOutputTokens": 500
+        }
+    }
+
+    with httpx.Client(timeout=15.0) as client:
+        resp = client.post(url, json=payload, headers=headers)
+        resp.raise_for_status()
+        data = resp.json()
+        candidates = data.get("candidates", [])
+        if candidates and "content" in candidates[0]:
+            parts = candidates[0]["content"].get("parts", [])
+            if parts and "text" in parts[0]:
+                return parts[0]["text"].strip()
+
+    raise ValueError("Invalid response structure from Gemini API.")
 
 
 def _extractive_fallback_answer(question: str, sources: List[SourceChunk], error_note: str = "") -> str:
