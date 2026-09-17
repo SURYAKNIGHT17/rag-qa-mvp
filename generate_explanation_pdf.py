@@ -36,7 +36,7 @@ def generate_explanation_pdf(output_path: str = "EXPLANATION.pdf"):
         current_y = top_y + 32
         for header, body in content_paragraphs:
             # Bullet point label
-            page.insert_text(pymupdf.Point(46, current_y), f"• {header}:", fontsize=9.0, color=BLUE_TITLE)
+            page.insert_text(pymupdf.Point(46, current_y), f"> {header}:", fontsize=9.0, color=BLUE_TITLE)
             # Text body
             text_rect = pymupdf.Rect(46, current_y + 3, 549, top_y + height - 6)
             page.insert_textbox(text_rect, body, fontsize=8.8, color=TEXT_DARK)
@@ -78,8 +78,8 @@ def generate_explanation_pdf(output_path: str = "EXPLANATION.pdf"):
 
     # Footer
     page.draw_line(pymupdf.Point(36, 792), pymupdf.Point(559, 792), color=(0.82, 0.85, 0.90))
-    page.insert_text(pymupdf.Point(36, 808), "Page 1 of 1 — Single-Page Assessment Explanation Document", fontsize=8.5, color=TEXT_MUTED)
-    page.insert_text(pymupdf.Point(460, 808), "Confidential — SURYAKNIGHT17", fontsize=8.5, color=TEXT_MUTED)
+    page.insert_text(pymupdf.Point(36, 808), "Page 1 of 1 - Single-Page Assessment Explanation Document", fontsize=8.5, color=TEXT_MUTED)
+    page.insert_text(pymupdf.Point(450, 808), "Confidential - SURYAKNIGHT17", fontsize=8.5, color=TEXT_MUTED)
 
     doc.save(output_path)
     doc.close()

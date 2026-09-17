@@ -10,7 +10,7 @@ def create_user_manual_pdf(output_path: str = "RAG_System_User_Manual.pdf"):
     # Title Header
     rect_header = pymupdf.Rect(0, 0, 595, 80)
     page1.draw_rect(rect_header, color=(0.1, 0.15, 0.3), fill=(0.1, 0.15, 0.3))
-    page1.insert_text(pymupdf.Point(40, 48), "RAG QUESTION ANSWERING SYSTEM — USER MANUAL", fontsize=16, color=(1, 1, 1))
+    page1.insert_text(pymupdf.Point(40, 48), "RAG QUESTION ANSWERING SYSTEM - USER MANUAL", fontsize=16, color=(1, 1, 1))
 
     # Section 1: Introduction
     page1.insert_text(pymupdf.Point(40, 110), "1. System Overview", fontsize=14, color=(0.1, 0.2, 0.5))
@@ -25,30 +25,30 @@ When a user asks a question whose relevance score falls below SIMILARITY_THRESHO
     diagram_box = pymupdf.Rect(40, 265, 555, 480)
     page1.draw_rect(diagram_box, color=(0.7, 0.8, 0.9), fill=(0.95, 0.97, 1.0))
     
-    arch_text = """[Document Upload (.pdf / .txt)] ──> [Text Extraction (PyMuPDF)] ──> [Sentence Chunking (500 chars)]
-                                                                               │
-[Answer + Source Snippets] <── [Grounded Prompt / LLM] <── [FAISS Cosine Search] <── [L2 Vectors (MiniLM)]
-                                                                               │
-[User Question] ───────────────> [Similarity Thresholding (>= 0.35)] ───────────┘"""
+    arch_text = """[Document Upload (.pdf / .txt)] --> [Text Extraction (PyMuPDF)] --> [Sentence Chunking (500 chars)]
+                                                                               |
+[Answer + Source Snippets] <-- [Grounded Prompt / LLM] <-- [FAISS Cosine Search] <-- [L2 Vectors (MiniLM)]
+                                                                               |
+[User Question] ---------------> [Similarity Thresholding (>= 0.35)] -----------+"""
     page1.insert_textbox(pymupdf.Rect(50, 310, 545, 440), arch_text, fontsize=9.5, color=(0.1, 0.1, 0.3))
 
     # Section 3: Tech Stack
     page1.insert_text(pymupdf.Point(40, 505), "3. Technology Stack & Rationale", fontsize=14, color=(0.1, 0.2, 0.5))
-    text_sec3 = """• Python 3.10+ / FastAPI: High-performance async REST framework with automatic OpenAPI Swagger docs.
-• PyMuPDF (pymupdf): C-backed PDF parser preserving page numbers and text layout.
-• SentenceTransformers (all-MiniLM-L6-v2): 384-d local dense vector generation with zero API cost.
-• FAISS (faiss-cpu): Facebook AI Similarity Search engine for exact Cosine Similarity matching.
-• Dual-Mode Answer Engine: Supports Google Gemini API, OpenAI API, or Local Extractive Grounding."""
+    text_sec3 = """* Python 3.10+ / FastAPI: High-performance async REST framework with automatic OpenAPI Swagger docs.
+* PyMuPDF (pymupdf): C-backed PDF parser preserving page numbers and text layout.
+* SentenceTransformers (all-MiniLM-L6-v2): 384-d local dense vector generation with zero API cost.
+* FAISS (faiss-cpu): Facebook AI Similarity Search engine for exact Cosine Similarity matching.
+* Dual-Mode Answer Engine: Supports Google Gemini API, OpenAI API, or Local Extractive Grounding."""
     page1.insert_textbox(pymupdf.Rect(40, 520, 555, 650), text_sec3, fontsize=10, color=(0.2, 0.2, 0.2))
 
-    page1.insert_text(pymupdf.Point(40, 800), "Page 1 of 2 — RAG QA System User Manual", fontsize=9, color=(0.5, 0.5, 0.5))
+    page1.insert_text(pymupdf.Point(40, 800), "Page 1 of 2 - RAG QA System User Manual", fontsize=9, color=(0.5, 0.5, 0.5))
 
     # Page 2: Step-by-Step Usage Guide & API Reference
     page2 = doc.new_page(width=595, height=842)
     
     # Title Header Page 2
     page2.draw_rect(rect_header, color=(0.1, 0.15, 0.3), fill=(0.1, 0.15, 0.3))
-    page2.insert_text(pymupdf.Point(40, 48), "RAG QA SYSTEM — STEP-BY-STEP OPERATIONAL GUIDE", fontsize=16, color=(1, 1, 1))
+    page2.insert_text(pymupdf.Point(40, 48), "RAG QA SYSTEM - STEP-BY-STEP OPERATIONAL GUIDE", fontsize=16, color=(1, 1, 1))
 
     # Section 4: Operational Guide
     page2.insert_text(pymupdf.Point(40, 110), "4. Step-by-Step User Instructions", fontsize=14, color=(0.1, 0.2, 0.5))
@@ -89,12 +89,12 @@ C. Query Documents (POST /query):
 
     # Section 6: Verification Metrics
     page2.insert_text(pymupdf.Point(40, 620), "6. Verification & Evaluation Summary", fontsize=14, color=(0.1, 0.2, 0.5))
-    text_metrics = """• Pytest Unit Test Suite: 6 / 6 PASSED (100% pass rate)
-• Grounding & Retrieval Accuracy: 100% (10/10 benchmark evaluation queries)
-• Average Query Latency: 57.38 ms per query"""
+    text_metrics = """* Pytest Unit Test Suite: 6 / 6 PASSED (100% pass rate)
+* Grounding & Retrieval Accuracy: 100% (10/10 benchmark evaluation queries)
+* Average Query Latency: 57.38 ms per query"""
     page2.insert_textbox(pymupdf.Rect(40, 635, 555, 730), text_metrics, fontsize=10, color=(0.2, 0.2, 0.2))
 
-    page2.insert_text(pymupdf.Point(40, 800), "Page 2 of 2 — RAG QA System User Manual", fontsize=9, color=(0.5, 0.5, 0.5))
+    page2.insert_text(pymupdf.Point(40, 800), "Page 2 of 2 - RAG QA System User Manual", fontsize=9, color=(0.5, 0.5, 0.5))
 
     doc.save(output_path)
     doc.close()
@@ -102,3 +102,4 @@ C. Query Documents (POST /query):
 
 if __name__ == "__main__":
     create_user_manual_pdf()
+
