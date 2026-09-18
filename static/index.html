@@ -75,6 +75,12 @@
               <span class="stat-label">Indexed Chunks</span>
             </div>
           </div>
+          <button id="resetIndexBtn" class="btn btn-outline btn-reset-index">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+            </svg>
+            <span>Clear / Reset Index</span>
+          </button>
         </div>
 
         <!-- Drag & Drop File Upload Card -->
@@ -105,7 +111,18 @@
 
           <!-- Indexed Document List -->
           <div class="doc-list-container">
-            <h4>Indexed Files</h4>
+            <div class="doc-list-header">
+              <h4>Indexed Files</h4>
+              <div id="selectionToolbar" class="selection-toolbar hidden">
+                <label class="checkbox-label" title="Select or deselect all files">
+                  <input type="checkbox" id="selectAllDocsCheckbox" checked>
+                  <span>All</span>
+                </label>
+                <button type="button" id="summarizeSelectedBtn" class="btn-summarize-selected" title="Summarize all selected documents">
+                  Summarize (<span id="selectedDocsCount">0</span>)
+                </button>
+              </div>
+            </div>
             <ul id="docList" class="doc-list">
               <li class="empty-doc-msg">No files indexed yet. Upload a PDF or TXT to start!</li>
             </ul>
@@ -132,6 +149,16 @@
                 autocomplete="off" 
                 required
               >
+              <button type="button" id="summarizeBtn" class="btn btn-secondary" title="Synthesize full-document executive summary">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                  <polyline points="14 2 14 8 20 8"/>
+                  <line x1="16" y1="13" x2="8" y2="13"/>
+                  <line x1="16" y1="17" x2="8" y2="17"/>
+                  <polyline points="10 9 9 9 8 9"/>
+                </svg>
+                <span>Summarize</span>
+              </button>
               <button type="submit" id="submitBtn" class="btn btn-primary">
                 <span>Ask Question</span>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -142,10 +169,34 @@
             </div>
           </form>
 
+          <!-- Custom Text / Profile Input Toggle -->
+          <div class="custom-text-toggle-row">
+            <button type="button" id="toggleCustomTextBtn" class="text-toggle-btn">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M11 4H4a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/>
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+              </svg>
+              <span>Paste Custom Text / Profile to Summarize Directly</span>
+            </button>
+          </div>
+
+          <div id="customTextSection" class="custom-text-section hidden">
+            <textarea id="customTextInput" placeholder="Paste your resume, profile bio, notes, or any raw text here to summarize directly without uploading a file..."></textarea>
+            <div class="custom-text-actions">
+              <button type="button" id="summarizeCustomTextBtn" class="btn btn-primary btn-sm">
+                <span>Summarize Text</span>
+              </button>
+              <button type="button" id="clearCustomTextBtn" class="btn btn-outline btn-sm">
+                <span>Clear</span>
+              </button>
+            </div>
+          </div>
+
           <!-- Quick Sample Question Pills -->
           <div class="sample-queries">
             <span class="sample-label">Suggested Queries:</span>
-            <div class="pills-wrapper">
+            <div class="pills-wrapper" id="pillsWrapper">
+              <button class="query-pill pill-accent" data-query="Summarize this document">📝 Executive Summary</button>
               <button class="query-pill" data-query="What is the customer refund period?">Refund Policy</button>
               <button class="query-pill" data-query="What is the annual paid leave entitlement for full-time employees?">Annual Leave</button>
               <button class="query-pill" data-query="How many weeks of parental leave do primary caregivers get?">Parental Leave</button>
@@ -178,7 +229,7 @@
           <div id="sourcesContainer" class="sources-section">
             <div class="sources-header">
               <h3>Source Attribution (<span id="sourceCount">0</span> Chunks Retrieved)</h3>
-              <span class="similarity-note">Relevance Threshold &ge; 0.35 Cosine Similarity</span>
+              <span class="similarity-note">Relevance Threshold &ge; 0.30 Cosine Similarity</span>
             </div>
             <div id="sourcesList" class="sources-list">
               <!-- Source Cards Rendered Dynamically -->

@@ -85,6 +85,7 @@ body {
   align-items: center;
   padding: 16px 28px;
   background: var(--bg-card);
+  -webkit-backdrop-filter: blur(16px);
   backdrop-filter: blur(16px);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
@@ -163,10 +164,24 @@ body {
   color: #fff;
   border-color: var(--accent-cyan);
 }
+.btn-reset-index {
+  margin-top: 12px;
+  width: 100%;
+  justify-content: center;
+  font-size: 0.82rem;
+  opacity: 0.85;
+}
+.btn-reset-index:hover {
+  opacity: 1;
+  border-color: #ef4444;
+  color: #fca5a5;
+  background: rgba(239, 68, 68, 0.1);
+}
 
 /* Cards */
 .card {
   background: var(--bg-card);
+  -webkit-backdrop-filter: blur(16px);
   backdrop-filter: blur(16px);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
@@ -294,11 +309,103 @@ body {
 .doc-list-container {
   margin-top: 20px;
 }
-.doc-list-container h4 {
-  font-size: 0.85rem;
-  color: var(--text-muted);
+.doc-list-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   margin-bottom: 10px;
 }
+.doc-list-header h4 {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin: 0;
+}
+.selection-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.checkbox-label input[type="checkbox"], .doc-checkbox {
+  cursor: pointer;
+  accent-color: var(--accent-primary);
+}
+.btn-summarize-selected {
+  background: rgba(168, 85, 247, 0.15);
+  border: 1px solid rgba(168, 85, 247, 0.35);
+  color: #d8b4fe;
+  font-size: 0.7rem;
+  padding: 3px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-weight: 600;
+}
+.btn-summarize-selected:hover {
+  background: rgba(168, 85, 247, 0.35);
+  color: #fff;
+  border-color: #c084fc;
+}
+
+/* Custom Text / Profile Direct Summarizer */
+.custom-text-toggle-row {
+  margin-top: 10px;
+  display: flex;
+  justify-content: flex-end;
+}
+.text-toggle-btn {
+  background: transparent;
+  border: none;
+  color: var(--accent-cyan);
+  font-size: 0.78rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  opacity: 0.85;
+  transition: all 0.2s ease;
+}
+.text-toggle-btn:hover {
+  opacity: 1;
+  text-decoration: underline;
+}
+.custom-text-section {
+  margin-top: 12px;
+  padding: 14px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+}
+.custom-text-section textarea {
+  width: 100%;
+  height: 90px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-sm);
+  color: var(--text-main);
+  padding: 10px;
+  font-family: var(--font-body);
+  font-size: 0.88rem;
+  resize: vertical;
+  outline: none;
+}
+.custom-text-section textarea:focus {
+  border-color: var(--accent-primary);
+}
+.custom-text-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  justify-content: flex-end;
+}
+
 .doc-list {
   list-style: none;
   display: flex;
@@ -320,6 +427,11 @@ body {
   align-items: center;
   gap: 8px;
   overflow: hidden;
+}
+.doc-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 .doc-name {
   white-space: nowrap;
@@ -399,6 +511,36 @@ body {
   background: rgba(99, 102, 241, 0.15);
   color: var(--accent-cyan);
   border-color: rgba(99, 102, 241, 0.3);
+}
+.query-pill.pill-accent {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.25), rgba(168, 85, 247, 0.25));
+  border-color: rgba(168, 85, 247, 0.4);
+  color: #e0e7ff;
+  font-weight: 600;
+}
+.query-pill.pill-accent:hover {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.4), rgba(168, 85, 247, 0.4));
+  border-color: rgba(168, 85, 247, 0.6);
+  color: #ffffff;
+}
+
+.btn-summarize-doc {
+  background: rgba(99, 102, 241, 0.15);
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  color: var(--accent-cyan);
+  font-size: 0.72rem;
+  padding: 3px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.btn-summarize-doc:hover {
+  background: rgba(99, 102, 241, 0.35);
+  color: #ffffff;
+  border-color: var(--accent-cyan);
 }
 
 /* Results Display Card */
@@ -526,6 +668,7 @@ body {
   width: 100vw;
   height: 100vh;
   background: rgba(0, 0, 0, 0.75);
+  -webkit-backdrop-filter: blur(8px);
   backdrop-filter: blur(8px);
   z-index: 100;
   display: flex;

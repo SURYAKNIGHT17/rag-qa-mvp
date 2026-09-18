@@ -1,9 +1,15 @@
 import time
 import os
+import sys
 from typing import List, Dict, Any
+
+# Ensure workspace root is on Python path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from fastapi.testclient import TestClient
 from app.main import app
 from app.generation import UNKNOWN_ANSWER_MESSAGE
+from app.retrieval import vector_store
 
 client = TestClient(app)
 
@@ -63,6 +69,7 @@ EVAL_QUESTIONS = [
 
 def run_evaluation() -> Dict[str, Any]:
     print("=== STARTING RAG SYSTEM EVALUATION ===")
+    vector_store.reset()
     
     # 1. Measure Document Ingestion Latency
     txt_path = os.path.join("tests", "sample_leave_policy.txt")

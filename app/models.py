@@ -37,3 +37,26 @@ class HealthResponse(BaseModel):
     status: str = "ok"
     indexed_chunks: int = 0
     indexed_documents: int = 0
+    documents: List[str] = []
+
+
+class SummaryRequest(BaseModel):
+    document: Optional[str] = Field(None, description="Optional single document name to summarize.")
+    documents: Optional[List[str]] = Field(None, description="Optional list of specific document names to summarize.")
+    text: Optional[str] = Field(None, description="Optional raw text or profile content to summarize directly.")
+
+
+class SummaryResponse(BaseModel):
+    document: str
+    summary: str
+    chunks_used: int
+    status: str = "success"
+
+
+class QuerySuggestion(BaseModel):
+    label: str
+    query: str
+
+
+class SuggestionsResponse(BaseModel):
+    suggestions: List[QuerySuggestion] = []

@@ -63,10 +63,14 @@ Designed with strict hallucination prevention guardrails: if a question cannot b
 2. **Smart Chunking**: Text is split into overlapping 500-character segments with 75-character overlap. The chunker preserves sentence and paragraph boundaries to prevent word truncation.
 3. **Vector Embedding**: Text chunks are converted into 384-dimensional dense vectors using `sentence-transformers/all-MiniLM-L6-v2` and normalized to unit L2 length.
 4. **FAISS Indexing**: Embeddings are stored in FAISS `IndexFlatIP`. Because vectors are L2-normalized, inner product equals exact Cosine Similarity in `[-1.0, 1.0]`.
-5. **Relevance Filtering & Grounding Guardrails**: When a user query is received, FAISS retrieves Top-K candidates. If the highest similarity score falls below `SIMILARITY_THRESHOLD=0.35`, the system immediately returns `"The answer could not be found in the provided documents."` without making hallucinated LLM calls.
-6. **Dual-Mode Answer Generation**: 
-   - **API Mode**: If an OpenAI key is configured, calls `gpt-4o-mini` with a strict grounded system prompt.
-   - **Extractive Fallback Mode**: If no API key is set, returns an extractive passage directly from the top-scoring source chunk.
+5. **Relevance Filtering & Grounding Guardrails**: When a user query is received, FAISS retrieves Top-K candidates. If the highest similarity score falls below `SIMILARITY_THRESHOLD=0.30`, the system immediately returns `"The answer could not be found in the provided documents."` without making hallucinated LLM calls.
+6. **Multi-Provider LLM Answer Synthesis with Cascade**:
+   - **Primary**: Google Gemini 2.5 Flash using secure header authentication (`x-goog-api-key`).
+   - **Secondary**: Automatic fallback to OpenAI (`gpt-4o-mini`) if Gemini is unconfigured or rate-limited.
+   - **Offline / Local**: Deterministic extractive grounded fallback if no LLM APIs are reachable.
+7. **Full-Document Executive Summarization**:
+   - Synthesizes an executive overview, key metrics, and actionable takeaways across all sequential document chunks.
+   - Available via dedicated `POST /documents/summary` API, natural language query detection (`"summarize this document"`), and one-click UI **"Summarize"** buttons.
 
 ---
 
@@ -258,6 +262,44 @@ curl -X POST "http://127.0.0.1:8000/query" \
 ```
 
 **Response (`200 OK`):**
+```json
+{
+  "answer": "The answer could not be found in the provided documents.",
+  "sources": []
+}
+```
+
+---
+
+#### 5. Document Executive Summarization (`POST /documents/summary`)
+
+Synthesizes a structured executive summary across all chunks of a document:
+
+```bash
+curl -X POST "http://127.0.0.1:8000/documents/summary" \
+  -H "Content-Type: application/json" \
+  -d '{"document": "sample_leave_policy.txt"}'
+```
+
+**Response (`200 OK`):**
+```json
+{
+  "document": "sample_leave_policy.txt",
+  "summary": "### Executive Overview\nThis document outlines ACME Corporation's employee leave entitlements and customer refund policy...",
+  "chunks_used": 3,
+  "status": "success"
+}
+```
+
+---
+
+#### 6. Clear / Reset Vector Store (`POST /documents/reset`)
+
+Clears all indexed documents, chunks, and FAISS vectors:
+
+```bash
+curl -X POST "http://127.0.0.1:8000/documents/reset"
+```
 ```json
 {
   "answer": "The answer could not be found in the provided documents.",

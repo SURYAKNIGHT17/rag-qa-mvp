@@ -1,4 +1,4 @@
-from typing import List, Tuple, Dict, Set
+from typing import List, Tuple, Dict, Set, Optional, Union
 import faiss
 import numpy as np
 from app.chunking import ChunkRecord
@@ -13,10 +13,25 @@ class VectorStore:
     Uses IndexFlatIP for Cosine Similarity search over L2-normalized embeddings.
     """
     def __init__(self, dimension: int = 384):
-        self.dimension = dimension
-        self.index = faiss.IndexFlatIP(dimension)
+        try:
+            model = embedding_manager.get_model()
+            if hasattr(model, "get_embedding_dimension"):
+                self.dimension = model.get_embedding_dimension()
+            else:
+                self.dimension = model.get_sentence_embedding_dimension()
+        except Exception:
+            self.dimension = dimension
+        self.index = faiss.IndexFlatIP(self.dimension)
         self.metadata_store: List[ChunkRecord] = []
         self.indexed_documents: Set[str] = set()
+
+    def reset(self):
+        """
+        Resets the index and clears all stored chunk metadata and documents.
+        """
+        self.index = faiss.IndexFlatIP(self.dimension)
+        self.metadata_store.clear()
+        self.indexed_documents.clear()
 
     @property
     def total_chunks(self) -> int:
@@ -25,6 +40,22 @@ class VectorStore:
     @property
     def total_documents(self) -> int:
         return len(self.indexed_documents)
+
+    def get_document_chunks(self, document_names: Optional[Union[str, List[str]]] = None) -> List[ChunkRecord]:
+        """
+        Returns all chunk records for specific document(s), or across all documents.
+        Sorted by document, page, and chunk_id for sequential reading.
+        """
+        if not document_names:
+            return sorted(self.metadata_store, key=lambda c: (c.document, c.page or 0, c.chunk_id))
+
+        if isinstance(document_names, str):
+            names_set = {document_names.lower()}
+        else:
+            names_set = {d.lower() for d in document_names if d}
+
+        matching = [c for c in self.metadata_store if c.document.lower() in names_set]
+        return sorted(matching, key=lambda c: (c.document, c.page or 0, c.chunk_id))
 
     def add_chunks(self, chunks: List[ChunkRecord]) -> int:
         """
@@ -39,6 +70,10 @@ class VectorStore:
 
         if embeddings.shape[0] != len(chunks):
             raise RuntimeError("Mismatch between number of chunks and generated embeddings.")
+
+        start_id = len(self.metadata_store)
+        for i, chunk in enumerate(chunks):
+            chunk.chunk_id = start_id + i
 
         self.index.add(embeddings)
         self.metadata_store.extend(chunks)
