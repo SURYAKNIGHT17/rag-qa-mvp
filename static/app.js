@@ -15,7 +15,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const queryForm = document.getElementById("queryForm");
   const questionInput = document.getElementById("questionInput");
   const submitBtn = document.getElementById("submitBtn");
-  const queryPills = document.querySelectorAll(".query-pill");
+  const pillsWrapper = document.getElementById("pillsWrapper");
 
   const emptyState = document.getElementById("emptyState");
   const resultContainer = document.getElementById("resultContainer");
@@ -29,19 +29,50 @@ document.addEventListener("DOMContentLoaded", () => {
   const openManualBtn = document.getElementById("openManualBtn");
   const closeManualBtn = document.getElementById("closeManualBtn");
   const manualModal = document.getElementById("manualModal");
+  const resetIndexBtn = document.getElementById("resetIndexBtn");
+  const summarizeBtn = document.getElementById("summarizeBtn");
+
+  // Multi-document selection elements
+  const selectionToolbar = document.getElementById("selectionToolbar");
+  const selectAllDocsCheckbox = document.getElementById("selectAllDocsCheckbox");
+  const summarizeSelectedBtn = document.getElementById("summarizeSelectedBtn");
+  const selectedDocsCount = document.getElementById("selectedDocsCount");
+
+  // Custom text summarizer elements
+  const toggleCustomTextBtn = document.getElementById("toggleCustomTextBtn");
+  const customTextSection = document.getElementById("customTextSection");
+  const customTextInput = document.getElementById("customTextInput");
+  const summarizeCustomTextBtn = document.getElementById("summarizeCustomTextBtn");
+  const clearCustomTextBtn = document.getElementById("clearCustomTextBtn");
 
   let indexedDocsSet = new Set();
+  let selectedDocsSet = new Set();
 
-  // 1. Check System Health
+  // 1. Check System Health & Sync Document List
   async function fetchHealth() {
     try {
       const res = await fetch("/health");
       if (res.ok) {
         const data = await res.json();
-        indexedDocsCount.textContent = data.indexed_documents || indexedDocsSet.size;
-        indexedChunksCount.textContent = data.indexed_chunks || 0;
+        indexedDocsCount.textContent = data.indexed_documents;
+        indexedChunksCount.textContent = data.indexed_chunks;
         healthStatusBadge.textContent = "Online";
         healthStatusBadge.className = "badge badge-success";
+
+        // Sync indexed documents list from backend
+        if (Array.isArray(data.documents)) {
+          indexedDocsSet = new Set(data.documents);
+          // Keep existing selections that still exist, or select all if new
+          const nextSelected = new Set();
+          indexedDocsSet.forEach((d) => {
+            if (selectedDocsSet.has(d) || selectedDocsSet.size === 0) {
+              nextSelected.add(d);
+            }
+          });
+          selectedDocsSet = nextSelected.size > 0 ? nextSelected : new Set(indexedDocsSet);
+          renderDocList();
+          fetchSuggestions();
+        }
       }
     } catch (e) {
       healthStatusBadge.textContent = "Offline";
@@ -50,6 +81,30 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   fetchHealth();
+
+  // Reset / Clear Index Handler
+  if (resetIndexBtn) {
+    resetIndexBtn.addEventListener("click", async () => {
+      if (!confirm("Are you sure you want to clear all indexed documents and vectors?")) {
+        return;
+      }
+      try {
+        const res = await fetch("/documents/reset", { method: "POST" });
+        if (res.ok) {
+          indexedDocsSet.clear();
+          selectedDocsSet.clear();
+          renderDocList();
+          await fetchHealth();
+          fetchSuggestions();
+          showUploadStatus("All indexed documents and vectors have been cleared.", false, false);
+          emptyState.classList.remove("hidden");
+          resultContainer.classList.add("hidden");
+        }
+      } catch (err) {
+        showUploadStatus(`Failed to reset: ${err.message}`, true, false);
+      }
+    });
+  }
 
   // 2. Drag & Drop File Upload
   dropZone.addEventListener("click", () => fileInput.click());
@@ -104,6 +159,7 @@ document.addEventListener("DOMContentLoaded", () => {
         indexedDocsSet.add(fileName);
         renderDocList();
         fetchHealth();
+        fetchSuggestions();
       } else {
         showUploadStatus(`Upload failed: ${data.detail || 'Unknown error'}`, true, false);
       }
@@ -132,28 +188,137 @@ document.addEventListener("DOMContentLoaded", () => {
   function renderDocList() {
     if (indexedDocsSet.size === 0) {
       docList.innerHTML = `<li class="empty-doc-msg">No files indexed yet. Upload a PDF or TXT to start!</li>`;
+      if (selectionToolbar) selectionToolbar.classList.add("hidden");
       return;
+    }
+
+    if (selectionToolbar) {
+      selectionToolbar.classList.remove("hidden");
+      if (selectedDocsCount) selectedDocsCount.textContent = selectedDocsSet.size;
+      if (selectAllDocsCheckbox) {
+        selectAllDocsCheckbox.checked = selectedDocsSet.size === indexedDocsSet.size && indexedDocsSet.size > 0;
+      }
     }
 
     docList.innerHTML = "";
     indexedDocsSet.forEach((docName) => {
+      const safeDocName = escapeHtml(docName);
+      const isChecked = selectedDocsSet.has(docName) ? "checked" : "";
       const li = document.createElement("li");
       li.className = "doc-item";
       li.innerHTML = `
         <div class="doc-info">
+          <input type="checkbox" class="doc-checkbox" data-doc="${safeDocName}" ${isChecked} title="Select ${safeDocName} for summary">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
             <polyline points="14 2 14 8 20 8"/>
           </svg>
-          <span class="doc-name" title="${docName}">${docName}</span>
+          <span class="doc-name" title="${safeDocName}">${safeDocName}</span>
         </div>
-        <span class="badge badge-success">Indexed</span>
+        <div class="doc-item-actions">
+          <button class="btn-summarize-doc" data-doc="${safeDocName}" title="Summarize only ${safeDocName}">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+            </svg>
+            <span>Summarize</span>
+          </button>
+          <span class="badge badge-success">Indexed</span>
+        </div>
       `;
       docList.appendChild(li);
     });
+
+    // Checkbox change handlers
+    docList.querySelectorAll(".doc-checkbox").forEach((cb) => {
+      cb.addEventListener("change", (e) => {
+        const doc = cb.getAttribute("data-doc");
+        if (cb.checked) {
+          selectedDocsSet.add(doc);
+        } else {
+          selectedDocsSet.delete(doc);
+        }
+        if (selectedDocsCount) selectedDocsCount.textContent = selectedDocsSet.size;
+        if (selectAllDocsCheckbox) {
+          selectAllDocsCheckbox.checked = selectedDocsSet.size === indexedDocsSet.size;
+        }
+        if (selectedDocsSet.size === 1) {
+          fetchSuggestions(Array.from(selectedDocsSet)[0]);
+        } else {
+          fetchSuggestions();
+        }
+      });
+    });
+
+    // Attach click events to individual doc summarize buttons
+    docList.querySelectorAll(".btn-summarize-doc").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const targetDoc = btn.getAttribute("data-doc");
+        executeSummary({ documents: [targetDoc] });
+      });
+    });
   }
 
-  // 3. Query Submission
+  // Select All Checkbox Handler
+  if (selectAllDocsCheckbox) {
+    selectAllDocsCheckbox.addEventListener("change", () => {
+      if (selectAllDocsCheckbox.checked) {
+        selectedDocsSet = new Set(indexedDocsSet);
+      } else {
+        selectedDocsSet.clear();
+      }
+      renderDocList();
+      fetchSuggestions();
+    });
+  }
+
+  // Summarize Selected Documents Button Handler
+  if (summarizeSelectedBtn) {
+    summarizeSelectedBtn.addEventListener("click", () => {
+      if (selectedDocsSet.size === 0) {
+        showUploadStatus("Please select at least one document using the checkboxes to summarize.", true, false);
+        return;
+      }
+      executeSummary({ documents: Array.from(selectedDocsSet) });
+    });
+  }
+
+  // Custom Text Toggle & Actions
+  if (toggleCustomTextBtn && customTextSection) {
+    toggleCustomTextBtn.addEventListener("click", () => {
+      customTextSection.classList.toggle("hidden");
+    });
+  }
+
+  if (clearCustomTextBtn && customTextInput) {
+    clearCustomTextBtn.addEventListener("click", () => {
+      customTextInput.value = "";
+    });
+  }
+
+  if (summarizeCustomTextBtn && customTextInput) {
+    summarizeCustomTextBtn.addEventListener("click", () => {
+      const text = customTextInput.value.trim();
+      if (!text) {
+        alert("Please paste or type text into the box first to generate a summary.");
+        return;
+      }
+      executeSummary({ text: text });
+    });
+  }
+
+  // 3. Query & Summary Submission
+  if (summarizeBtn) {
+    summarizeBtn.addEventListener("click", () => {
+      if (selectedDocsSet.size > 0) {
+        executeSummary({ documents: Array.from(selectedDocsSet) });
+      } else {
+        executeSummary();
+      }
+    });
+  }
+
   queryForm.addEventListener("submit", (e) => {
     e.preventDefault();
     const q = questionInput.value.trim();
@@ -162,13 +327,136 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  queryPills.forEach((pill) => {
-    pill.addEventListener("click", () => {
-      const q = pill.getAttribute("data-query");
-      questionInput.value = q;
-      executeQuery(q);
+  // Render dynamic suggestions into pills wrapper
+  function renderSuggestions(suggestions) {
+    if (!pillsWrapper || !Array.isArray(suggestions) || suggestions.length === 0) return;
+    pillsWrapper.innerHTML = "";
+    suggestions.forEach((item, index) => {
+      const btn = document.createElement("button");
+      const isExecutive = item.label.toLowerCase().includes("summary") || item.label.toLowerCase().includes("executive") || index === 0;
+      btn.className = `query-pill${isExecutive ? " pill-accent" : ""}`;
+      btn.setAttribute("data-query", item.query);
+      btn.textContent = item.label;
+      btn.title = item.query;
+      btn.addEventListener("click", () => {
+        questionInput.value = item.query;
+        executeQuery(item.query);
+      });
+      pillsWrapper.appendChild(btn);
     });
-  });
+  }
+
+  // Fetch dynamic suggestions from backend
+  async function fetchSuggestions(documentName = null) {
+    try {
+      const url = documentName ? `/documents/suggestions?document=${encodeURIComponent(documentName)}` : "/documents/suggestions";
+      const res = await fetch(url);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.suggestions && data.suggestions.length > 0) {
+          renderSuggestions(data.suggestions);
+        }
+      }
+    } catch (e) {
+      console.warn("Could not fetch dynamic suggestions:", e);
+    }
+  }
+
+  // Initial listener attachment for any pre-rendered fallback query pills
+  if (pillsWrapper) {
+    pillsWrapper.querySelectorAll(".query-pill").forEach((pill) => {
+      pill.addEventListener("click", () => {
+        const q = pill.getAttribute("data-query");
+        questionInput.value = q;
+        executeQuery(q);
+      });
+    });
+  }
+
+  async function executeSummary(options = {}) {
+    // Determine payload based on arguments
+    let payload = {};
+    let label = "all indexed documents";
+
+    if (typeof options === "string") {
+      payload = { document: options };
+      label = `"${options}"`;
+    } else if (options.text) {
+      payload = { text: options.text };
+      label = "Custom Text Input";
+    } else if (options.documents && options.documents.length > 0) {
+      payload = { documents: options.documents };
+      label = options.documents.length === 1 ? `"${options.documents[0]}"` : `${options.documents.length} selected documents`;
+    } else {
+      if (indexedDocsSet.size === 0) {
+        showUploadStatus("Please upload a PDF or TXT document first before generating a summary.", true, false);
+        return;
+      }
+      payload = {};
+      label = "all indexed documents";
+    }
+
+    emptyState.classList.add("hidden");
+    resultContainer.classList.remove("hidden");
+
+    answerText.textContent = `Synthesizing comprehensive executive summary for ${label}...`;
+    sourcesList.innerHTML = "";
+    groundedBadge.textContent = "Executive Summary";
+    groundedBadge.className = "badge badge-primary";
+    sourceCount.textContent = "Full Context";
+
+    const startTime = performance.now();
+
+    try {
+      const res = await fetch("/documents/summary", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+
+      const elapsedMs = Math.round(performance.now() - startTime);
+      latencyBadge.textContent = `${elapsedMs} ms`;
+
+      const data = await res.json();
+
+      if (res.ok) {
+        // Convert simple markdown bullets and headers to rich HTML
+        answerText.innerHTML = formatMarkdown(data.summary);
+        sourceCount.textContent = `${data.chunks_used} Chunks Synthesized`;
+        sourcesList.innerHTML = `
+          <div class="source-card">
+            <div class="source-meta">
+              <span class="source-doc-name">📄 Scope: ${escapeHtml(data.document)}</span>
+              <span class="badge badge-primary">Context: ${data.chunks_used} Chunks</span>
+            </div>
+            <div class="source-text">
+              This summary was synthesized by analyzing all ${data.chunks_used} sequential document sections to produce a holistic executive overview.
+            </div>
+          </div>
+        `;
+      } else {
+        answerText.textContent = `Error: ${data.detail || 'Failed to generate summary'}`;
+        groundedBadge.textContent = "Error";
+        groundedBadge.className = "badge badge-warning";
+      }
+    } catch (err) {
+      answerText.textContent = `Network error: ${err.message}`;
+    }
+  }
+
+  function formatMarkdown(text) {
+    if (!text) return "";
+    let html = escapeHtml(text);
+    // Headers ###
+    html = html.replace(/^### (.*$)/gim, '<h4 style="margin: 12px 0 6px; color: var(--accent-cyan);">$1</h4>');
+    // Bold **text**
+    html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    // Bullets - text
+    html = html.replace(/^\- (.*$)/gim, '<li style="margin-left: 20px; margin-bottom: 6px;">$1</li>');
+    // Line breaks
+    html = html.replace(/\n\n/g, '<p style="margin-bottom: 12px;"></p>');
+    return html;
+  }
 
   async function executeQuery(question) {
     emptyState.classList.add("hidden");
