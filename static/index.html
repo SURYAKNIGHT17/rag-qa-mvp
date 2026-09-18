@@ -28,7 +28,7 @@
         </div>
         <div class="brand-text">
           <h1>RAG QA Engine</h1>
-          <span class="version-tag">MVP v1.0</span>
+          <span class="version-tag">v1.1 — Dynamic Suggestions</span>
         </div>
       </div>
 
@@ -262,33 +262,76 @@
   <div id="manualModal" class="modal-backdrop hidden">
     <div class="modal-content">
       <div class="modal-header">
-        <h2>📖 RAG System User Manual</h2>
+        <h2>📖 RAG System — User Manual</h2>
         <button id="closeManualBtn" class="close-btn">&times;</button>
       </div>
       <div class="modal-body">
-        
+
         <div class="manual-section">
-          <h3>1. System Overview</h3>
-          <p>This RAG (Retrieval-Augmented Generation) system extracts text from PDF and TXT documents, chunks the content into overlapping segments, converts text into 384-dimensional dense vectors using SentenceTransformers, and indexes vectors into FAISS. When you ask a question, the system searches the index using exact Cosine Similarity and grounds answers strictly in retrieved content.</p>
+          <h3>1. What This System Does</h3>
+          <p>This is a <strong>Retrieval-Augmented Generation (RAG)</strong> system. It answers questions <em>strictly from your uploaded documents</em> — not from the AI model's own knowledge. Every answer is grounded in a specific passage and attributed back to its source page. If the answer isn't in your documents, the system says so rather than inventing one.</p>
+          <p>Supported document formats: <code>.pdf</code> (multi-page, page-tracked) and <code>.txt</code> (UTF-8 or Latin-1).</p>
         </div>
 
         <div class="manual-section">
-          <h3>2. How to Use</h3>
+          <h3>2. How the Pipeline Works</h3>
           <ol>
-            <li><strong>Upload Documents</strong>: Drag & drop your PDF or TXT file into the <em>Document Ingestion</em> zone on the left sidebar.</li>
-            <li><strong>Ask Questions</strong>: Type any question in the main search bar or click one of the suggested query pills.</li>
-            <li><strong>View Grounded Answer & Sources</strong>: Review the generated answer and expand the <em>Source Attribution</em> cards to see exact document page numbers, similarity scores, and text snippets.</li>
-            <li><strong>Hallucination Guardrail</strong>: If a question cannot be answered from your documents, the system returns <code>"The answer could not be found in the provided documents."</code> rather than inventing false claims.</li>
+            <li><strong>Upload</strong> → Text is extracted from every page of your PDF or TXT file.</li>
+            <li><strong>Chunking</strong> → Document is split into overlapping ~500-character segments preserving sentence boundaries.</li>
+            <li><strong>Embedding</strong> → Each chunk is converted to a 384-dimensional vector using <code>all-MiniLM-L6-v2</code> (runs locally, no API call).</li>
+            <li><strong>Indexing</strong> → Vectors are stored in a FAISS in-memory index using exact Cosine Similarity.</li>
+            <li><strong>Query</strong> → Your question is embedded and compared against all chunk vectors. Top-3 most similar chunks are retrieved.</li>
+            <li><strong>Relevance Gate</strong> → If no chunk scores ≥ 0.30 cosine similarity, the answer is <em>not found</em> — no LLM is called.</li>
+            <li><strong>Generation</strong> → Retrieved chunks are injected into a strict LLM prompt. The model can only answer from the given context.</li>
           </ol>
         </div>
 
         <div class="manual-section">
-          <h3>3. API Reference</h3>
+          <h3>3. How to Use</h3>
+          <ol>
+            <li><strong>Upload a Document</strong> — Drag &amp; drop a PDF or TXT onto the <em>Document Ingestion</em> zone, or click to browse. Wait for the "Successfully indexed" confirmation.</li>
+            <li><strong>Ask a Question</strong> — Type in the search bar and press <em>Ask Question</em>, or click any suggested query pill below the bar.</li>
+            <li><strong>Read the Answer</strong> — The <em>Grounded Response</em> card shows the answer. Expand the <em>Source Attribution</em> section below it to see the exact document passages used, with page numbers and similarity scores.</li>
+            <li><strong>Summarize a Document</strong> — Click the <em>Summarize</em> button next to the search bar for a full executive summary of all indexed documents.</li>
+            <li><strong>Summarize Specific Files</strong> — Use the checkboxes next to each file in <em>Indexed Files</em> to select specific documents, then click <em>Summarize (N)</em>.</li>
+            <li><strong>Summarize Pasted Text</strong> — Click <em>Paste Custom Text / Profile</em> below the search bar, paste any raw text, and click <em>Summarize Text</em>.</li>
+            <li><strong>Dynamic Suggested Queries</strong> — After uploading, the query pills automatically update to reflect questions tailored to your document's actual content. Selecting a single file also refreshes the suggestions for that file.</li>
+            <li><strong>Reset the Index</strong> — Click <em>Clear / Reset Index</em> in the sidebar to wipe all indexed documents and start fresh.</li>
+          </ol>
+        </div>
+
+        <div class="manual-section">
+          <h3>4. Understanding the Results</h3>
           <ul>
-            <li><code>GET /health</code>: System status and indexed document count.</li>
-            <li><code>POST /documents/upload</code>: Ingest PDF or TXT files.</li>
-            <li><code>POST /query</code>: Search indexed chunks and generate grounded answers.</li>
+            <li><strong>100% Grounded badge</strong> — Answer was generated strictly from retrieved document passages.</li>
+            <li><strong>Latency badge</strong> — End-to-end time from submitting your question to receiving the answer.</li>
+            <li><strong>Similarity score (e.g. 0.73)</strong> — Cosine similarity between your question and the retrieved chunk. Range 0–1; higher = more relevant. Threshold is 0.30.</li>
+            <li><strong>Page number</strong> — Exact page in the original PDF where the source chunk was found.</li>
+            <li><em>"The answer could not be found in the provided documents."</em> — No chunk was similar enough to your question. The system did not hallucinate; try rephrasing or upload a more relevant document.</li>
           </ul>
+        </div>
+
+        <div class="manual-section">
+          <h3>5. API Reference</h3>
+          <ul>
+            <li><code>GET /health</code> — System status, indexed document count, and document list.</li>
+            <li><code>POST /documents/upload</code> — Ingest a PDF or TXT file (multipart/form-data).</li>
+            <li><code>POST /documents/reset</code> — Clear all indexed documents and vectors.</li>
+            <li><code>POST /documents/summary</code> — Generate executive summary for selected documents or raw text.</li>
+            <li><code>GET /documents/suggestions</code> — Return dynamically generated query suggestions from indexed content.</li>
+            <li><code>POST /query</code> — Ask a question; returns grounded answer + source chunks.</li>
+          </ul>
+        </div>
+
+        <div class="manual-section">
+          <h3>6. LLM Cascade &amp; Offline Mode</h3>
+          <p>The system tries three answer sources in order:</p>
+          <ol>
+            <li><strong>Google Gemini</strong> (if <code>GEMINI_API_KEY</code> is set in <code>.env</code>)</li>
+            <li><strong>OpenAI GPT-4o-mini</strong> (if <code>LLM_API_KEY</code> is set)</li>
+            <li><strong>Local Extractive Fallback</strong> — deterministic, no API needed, always works offline</li>
+          </ol>
+          <p>Embeddings always run locally using <code>all-MiniLM-L6-v2</code> — no API key required for document indexing or retrieval.</p>
         </div>
 
         <div class="manual-footer">
