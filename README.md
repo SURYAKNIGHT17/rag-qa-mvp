@@ -12,6 +12,26 @@ Designed with strict hallucination prevention guardrails: if a question cannot b
 
 ---
 
+## 📸 Visual Walkthrough & System in Action
+
+### 1. Modern Dashboard & Dynamic Query Suggestions
+![Dashboard Overview](docs/screenshots/01_dashboard_overview.png)
+*Modern glassmorphism interface with active document metrics, dynamic suggestion pills based on uploaded document content, and multi-file drag-and-drop dropzone.*
+
+---
+
+### 2. Grounded Question Answering with Source Attributions
+![Grounded Answer](docs/screenshots/02_grounded_answer.png)
+*Synthesized answer strictly grounded in retrieved passages, featuring exact document name, page number, retrieval similarity score (e.g. 0.69), response latency, and chunk excerpts.*
+
+---
+
+### 3. Strict Out-of-Domain Refusal Guardrail
+![Out of Domain Refusal](docs/screenshots/03_out_of_domain_refusal.png)
+*Strict anti-hallucination guardrail active: when user query similarity falls below the calibrated threshold, the system guarantees an explicit unknown-answer refusal rather than fabricating unsupported claims.*
+
+---
+
 ## 💡 Use Cases
 
 - **Internal Policy & Employee Handbook Q&A**: Upload HR policies, benefits guides, or leave documents for instant, accurate answers with exact page attributions.
