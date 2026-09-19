@@ -12,7 +12,27 @@ Designed with strict hallucination prevention guardrails: if a question cannot b
 
 ---
 
-##  Use Cases
+## 📸 Visual Walkthrough & System in Action
+
+### 1. Modern Dashboard & Dynamic Query Suggestions
+![Dashboard Overview](docs/screenshots/01_dashboard_overview.png)
+*Modern glassmorphism interface with active document metrics, dynamic suggestion pills based on uploaded document content, and multi-file drag-and-drop dropzone.*
+
+---
+
+### 2. Grounded Question Answering with Source Attributions
+![Grounded Answer](docs/screenshots/02_grounded_answer.png)
+*Synthesized answer strictly grounded in retrieved passages, featuring exact document name, page number, retrieval similarity score (e.g. 0.69), response latency, and chunk excerpts.*
+
+---
+
+### 3. Strict Out-of-Domain Refusal Guardrail
+![Out of Domain Refusal](docs/screenshots/03_out_of_domain_refusal.png)
+*Strict anti-hallucination guardrail active: when user query similarity falls below the calibrated threshold, the system guarantees an explicit unknown-answer refusal rather than fabricating unsupported claims.*
+
+---
+
+## 💡 Use Cases
 
 - **Internal Policy & Employee Handbook Q&A**: Upload HR policies, benefits guides, or leave documents for instant, accurate answers with exact page attributions.
 - **Legal & Compliance Document Analysis**: Search software licenses, terms of service, and contract clauses without reading through long PDFs manually.
@@ -21,7 +41,7 @@ Designed with strict hallucination prevention guardrails: if a question cannot b
 
 ---
 
-##  How It Works (Pipeline Architecture)
+## ⚙️ How It Works (Pipeline Architecture)
 
 ```text
                   PDF / TXT Document Upload
@@ -45,10 +65,10 @@ Designed with strict hallucination prevention guardrails: if a question cannot b
                              ↓
               FAISS Similarity Search (Top-K = 5)
                              ↓
-         Relevance Filtering Check (Similarity Score >= 0.35)
-                ┌────────────┴────────────┐
-                ↓                         ↓
-       Relevant (>= 0.35)       Not Relevant (< 0.35)
+         Relevance Filtering Check (Similarity Score >= 0.30)
+                 ┌────────────┴────────────┐
+                 ↓                         ↓
+        Relevant (>= 0.30)       Not Relevant (< 0.30)
                 ↓                         ↓
       Grounded LLM Prompt       Return: "The answer could not be found
                 ↓                in the provided documents."
@@ -63,14 +83,22 @@ Designed with strict hallucination prevention guardrails: if a question cannot b
 2. **Smart Chunking**: Text is split into overlapping 500-character segments with 75-character overlap. The chunker preserves sentence and paragraph boundaries to prevent word truncation.
 3. **Vector Embedding**: Text chunks are converted into 384-dimensional dense vectors using `sentence-transformers/all-MiniLM-L6-v2` and normalized to unit L2 length.
 4. **FAISS Indexing**: Embeddings are stored in FAISS `IndexFlatIP`. Because vectors are L2-normalized, inner product equals exact Cosine Similarity in `[-1.0, 1.0]`.
-5. **Relevance Filtering & Grounding Guardrails**: When a user query is received, FAISS retrieves Top-K candidates. If the highest similarity score falls below `SIMILARITY_THRESHOLD=0.35`, the system immediately returns `"The answer could not be found in the provided documents."` without making hallucinated LLM calls.
-6. **Dual-Mode Answer Generation**: 
-   - **API Mode**: If an OpenAI key is configured, calls `gpt-4o-mini` with a strict grounded system prompt.
-   - **Extractive Fallback Mode**: If no API key is set, returns an extractive passage directly from the top-scoring source chunk.
+5. **Relevance Filtering & Grounding Guardrails**: When a user query is received, FAISS retrieves Top-K candidates. If the highest similarity score falls below `SIMILARITY_THRESHOLD=0.30`, the system immediately returns `"The answer could not be found in the provided documents."` without making hallucinated LLM calls.
+6. **Multi-Provider LLM Answer Synthesis with Cascade**:
+   - **Primary**: Google Gemini 2.5 Flash using secure header authentication (`x-goog-api-key`).
+   - **Secondary**: Automatic fallback to OpenAI (`gpt-4o-mini`) if Gemini is unconfigured or rate-limited.
+   - **Offline / Local**: Deterministic extractive grounded fallback if no LLM APIs are reachable.
+7. **Full-Document Executive Summarization**:
+   - Synthesizes an executive overview, key metrics, and actionable takeaways across all sequential document chunks.
+   - Available via dedicated `POST /documents/summary` API, natural language query detection (`"summarize this document"`), and one-click UI **"Summarize"** buttons.
+8. **Dynamic Suggested Queries**:
+   - `GET /documents/suggestions` analyzes indexed document content and returns 4 tailored suggested questions.
+   - Pills automatically refresh in the UI on document upload, reset, or per-document selection.
+   - Includes offline extractive fallback if no LLM key is configured.
 
 ---
 
-##  Tech Stack & Selection Rationale
+## 🛠️ Tech Stack & Selection Rationale
 
 | Technology | Purpose | Rationale |
 | :--- | :--- | :--- |
@@ -84,7 +112,7 @@ Designed with strict hallucination prevention guardrails: if a question cannot b
 
 ---
 
-##  System Requirements & Prerequisites
+## 📋 System Requirements & Prerequisites
 
 ### Prerequisites
 - **Operating System**: Windows 10/11, macOS, or Linux.
@@ -95,7 +123,7 @@ Designed with strict hallucination prevention guardrails: if a question cannot b
 
 ---
 
-##  Installation & Setup Guide
+## 🚀 Installation & Setup Guide
 
 ### 1. Clone the Repository
 
@@ -135,7 +163,10 @@ cp .env.example .env
 Edit `.env` to configure your settings:
 
 ```env
-# Optional: OpenAI API Key for synthesized answer generation
+# Optional: Google Gemini API Key (primary LLM)
+GEMINI_API_KEY=your_gemini_api_key_here
+
+# Optional: OpenAI API Key (secondary fallback LLM)
 LLM_API_KEY=your_openai_api_key_here
 LLM_MODEL=gpt-4o-mini
 
@@ -143,9 +174,11 @@ LLM_MODEL=gpt-4o-mini
 EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
 CHUNK_SIZE=500
 CHUNK_OVERLAP=75
-TOP_K=5
-SIMILARITY_THRESHOLD=0.35
+TOP_K=3
+SIMILARITY_THRESHOLD=0.30
 ```
+
+> **Note**: Both API keys are optional. If neither is set, the system runs in offline Extractive Grounded Fallback Mode.
 
 ---
 
@@ -155,14 +188,20 @@ SIMILARITY_THRESHOLD=0.35
 
 Run the server using the entrypoint script:
 
-```bash
+**On Windows (PowerShell):**
+```powershell
 .venv\Scripts\python run.py
+```
+
+**On macOS / Linux:**
+```bash
+.venv/bin/python run.py
 ```
 
 *Or start directly with Uvicorn:*
 
 ```bash
-uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
 Once running, the server is available at `http://127.0.0.1:8000`.
@@ -267,7 +306,72 @@ curl -X POST "http://127.0.0.1:8000/query" \
 
 ---
 
-##  Running Tests & Evaluation
+#### 5. Document Executive Summarization (`POST /documents/summary`)
+
+Synthesizes a structured executive summary across all chunks of a document:
+
+```bash
+curl -X POST "http://127.0.0.1:8000/documents/summary" \
+  -H "Content-Type: application/json" \
+  -d '{"document": "sample_leave_policy.txt"}'
+```
+
+**Response (`200 OK`):**
+```json
+{
+  "document": "sample_leave_policy.txt",
+  "summary": "### Executive Overview\nThis document outlines ACME Corporation's employee leave entitlements and customer refund policy...",
+  "chunks_used": 3,
+  "status": "success"
+}
+```
+
+---
+
+#### 6. Clear / Reset Vector Store (`POST /documents/reset`)
+
+Clears all indexed documents, chunks, and FAISS vectors:
+
+```bash
+curl -X POST "http://127.0.0.1:8000/documents/reset"
+```
+**Response (`200 OK`):**
+```json
+{
+  "status": "reset",
+  "indexed_chunks": 0,
+  "indexed_documents": 0
+}
+```
+
+---
+
+#### 7. Dynamic Suggested Queries (`GET /documents/suggestions`)
+
+Returns dynamically generated suggested questions tailored to indexed document content:
+
+```bash
+# Suggestions across all indexed documents
+curl -X GET "http://127.0.0.1:8000/documents/suggestions"
+
+# Suggestions for a specific document
+curl -X GET "http://127.0.0.1:8000/documents/suggestions?document=sample_leave_policy.txt"
+```
+
+**Response (`200 OK`):**
+```json
+{
+  "suggestions": [
+    { "label": "📝 Executive Summary", "query": "Summarize this document" },
+    { "label": "Refund Window",        "query": "What is the customer refund period?" },
+    { "label": "Annual Leave",         "query": "What is the annual leave entitlement for full-time employees?" },
+    { "label": "Wellness Allowance",   "query": "What is the annual wellness allowance amount?" }
+  ]
+}
+
+---
+
+## 🧪 Running Tests & Evaluation
 
 ### Run Pytest Automated Suite
 Runs unit tests covering direct answer retrieval, paraphrased queries, unknown question handling, multiple chunk retrieval, and invalid file upload handling.
@@ -284,14 +388,14 @@ python evaluation/evaluate.py
 ```
 
 ### Empirical Benchmark Results
-- **Pytest Suite Pass Rate**: `100.0% (6/6 passed)`
+- **Pytest Suite Pass Rate**: `100.0% (11/11 passed)`
 - **Grounding Accuracy / Hit Rate**: `100.0% (10/10 correct)`
-- **Average Query Latency**: `57.38 ms` per query
-- **Document Indexing Latency**: `32.4 ms`
+- **Average Query Latency**: `~640 ms` (with LLM synthesis) / `~57 ms` (extractive fallback)
+- **Document Indexing Latency**: `~32 ms` (after initial model load)
 
 ---
 
-##  Limitations & Future Roadmap
+## 📌 Limitations & Future Roadmap
 
 ### Current MVP Limitations
 - **No OCR Support**: Scanned image PDFs without text layers return a 400 validation error.
@@ -306,6 +410,6 @@ python evaluation/evaluate.py
 
 ---
 
-##  License
+## 📜 License
 
 This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.

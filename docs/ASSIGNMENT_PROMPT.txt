@@ -1,0 +1,1078 @@
+# ASSESSMENT
+
+I am completing an AI Engineer / Applied AI — Forward Deployed Track assessment.
+
+The task is:
+
+## RAG Question Answering
+
+A user uploads reference documents and asks questions about them.
+
+The system retrieves relevant material from those documents and generates an answer grounded in the retrieved material.
+
+The system must NOT invent answers when the information isn't present.
+
+---
+
+# REQUIRED FUNCTIONALITY
+
+The final application MUST:
+
+1. Accept PDF files.
+2. Accept TXT files.
+3. Extract text.
+4. Chunk the text.
+5. Generate embeddings.
+6. Store embeddings in a local vector store.
+7. Accept user questions.
+8. Embed the question.
+9. Retrieve relevant chunks.
+10. Generate an answer using retrieved context.
+11. Return the source chunks.
+12. Handle questions whose answers are not present in the documents.
+13. Handle LLM/embedding failures gracefully.
+
+---
+
+# TECHNICAL REQUIREMENTS
+
+Use:
+
+* Python
+* FastAPI
+* Pydantic
+* PyMuPDF for PDF extraction
+* sentence-transformers for embeddings if practical
+* FAISS for local vector search if practical
+* An LLM API for answer generation
+* python-dotenv
+
+Use pytest only where it helps quickly validate the system.
+
+Do NOT introduce:
+
+* React
+* Authentication
+* Docker
+* Kubernetes
+* Cloud deployment
+* PostgreSQL
+* Redis
+* LangChain
+* LlamaIndex
+* Agents
+* unnecessary frameworks
+
+unless there is an unavoidable technical reason.
+
+The evaluator explicitly says infrastructure is not the focus.
+
+---
+
+# PRIORITY ORDER
+
+Follow this priority strictly:
+
+## P0 — MUST WORK
+
+* PDF upload
+* TXT upload
+* Extraction
+* Chunking
+* Embeddings
+* Vector search
+* Query
+* LLM answer
+* Source chunks
+* Unknown-answer handling
+* API validation
+* Error handling
+
+## P1 — IMPORTANT
+
+* Retrieval quality
+* Reasonable chunking
+* Reasonable Top-K
+* Relevance threshold
+* Basic testing
+
+## P2 — IMPORTANT IF TIME ALLOWS
+
+* Latency measurement
+* Small retrieval evaluation
+* Tests
+* README improvements
+
+## P3 — OPTIONAL
+
+Everything else.
+
+If time becomes limited, NEVER sacrifice P0 for P3.
+
+---
+
+# FIRST: INSPECT THE ENVIRONMENT
+
+Before writing code:
+
+1. Inspect the current workspace.
+2. Identify existing files.
+3. Identify available Python version.
+4. Identify available packages.
+5. Check whether an API key/environment variable already exists.
+6. Determine what PDF generation/documentation tools are available if needed.
+7. Check whether there is already a partially implemented project.
+
+If an existing implementation exists:
+
+**Improve it instead of unnecessarily rewriting it.**
+
+Do not destroy useful existing work.
+
+---
+
+# BUILD A MINIMAL CLEAN PROJECT
+
+Use a structure similar to:
+
+```text
+rag-qa/
+│
+├── app/
+│   ├── __init__.py
+│   ├── main.py
+│   ├── models.py
+│   ├── config.py
+│   ├── ingestion.py
+│   ├── chunking.py
+│   ├── embeddings.py
+│   ├── retrieval.py
+│   └── generation.py
+│
+├── data/
+│   └── .gitkeep
+│
+├── tests/
+│   └── test_basic.py
+│
+├── evaluation/
+│   └── evaluate.py
+│
+├── requirements.txt
+├── .env.example
+├── .gitignore
+└── README.md
+```
+
+Simplify this if necessary.
+
+Do NOT create files merely for appearance.
+
+---
+
+# ARCHITECTURE
+
+Implement this pipeline:
+
+```text
+                PDF / TXT
+                    ↓
+             File Validation
+                    ↓
+             Text Extraction
+                    ↓
+              Text Cleaning
+                    ↓
+                Chunking
+                    ↓
+               Embeddings
+                    ↓
+              FAISS Index
+                    ↓
+              Stored Metadata
+
+
+User Question
+      ↓
+Pydantic Validation
+      ↓
+Query Embedding
+      ↓
+FAISS Similarity Search
+      ↓
+Top-K Chunks
+      ↓
+Relevance Check
+      ↓
+   ┌──┴──────────┐
+   │             │
+Relevant      Not Relevant
+   │             │
+   ↓             ↓
+Grounded      Not Found
+Prompt        Response
+   │
+   ↓
+  LLM
+   │
+   ↓
+Answer + Sources
+```
+
+---
+
+# DOCUMENT INGESTION
+
+Implement:
+
+`POST /documents/upload`
+
+Requirements:
+
+* Accept PDF and TXT.
+* Validate file type.
+* Reject unsupported files.
+* Reject empty files.
+* Extract text.
+* Reject documents containing no usable text.
+* Chunk extracted text.
+* Generate embeddings.
+* Add embeddings to FAISS.
+* Store metadata connecting vector IDs to:
+
+  * filename
+  * chunk ID
+  * chunk text
+  * page number if available
+
+Return a useful success response.
+
+Example:
+
+```json
+{
+  "filename": "example.pdf",
+  "chunks_created": 24,
+  "status": "indexed"
+}
+```
+
+---
+
+# PDF EXTRACTION
+
+Use PyMuPDF where practical.
+
+For PDFs:
+
+* Extract page text.
+* Preserve page number metadata.
+* Avoid losing useful whitespace unnecessarily.
+* Ignore completely empty pages.
+
+If a PDF has no extractable text, return an appropriate error.
+
+Do NOT implement OCR unless it can be done quickly and reliably.
+
+If OCR isn't supported, document it as a limitation.
+
+---
+
+# TXT EXTRACTION
+
+Read UTF-8 text.
+
+Handle decoding errors gracefully.
+
+---
+
+# CHUNKING
+
+This is an important evaluation criterion.
+
+Implement a simple, understandable chunking strategy.
+
+Prefer a paragraph/sentence-aware or token-aware approach if it can be implemented reliably within the time limit.
+
+A reasonable starting point is approximately:
+
+**500 tokens per chunk with approximately 75 tokens overlap**
+
+BUT:
+
+Do NOT claim this is universally optimal.
+
+Treat it as an initial engineering choice.
+
+Make the values configurable.
+
+For example:
+
+```text
+CHUNK_SIZE=500
+CHUNK_OVERLAP=75
+TOP_K=5
+SIMILARITY_THRESHOLD=<validated starting value>
+```
+
+If implementing token counting adds too much complexity, use a clearly documented approximation and explain the tradeoff.
+
+The priority is reliable retrieval.
+
+---
+
+# EMBEDDINGS
+
+Use a practical embedding solution.
+
+Prefer a local sentence-transformers model if it is feasible in the environment and does not create unreasonable setup time.
+
+Ensure the same embedding model is used for:
+
+* Document chunks
+* User queries
+
+Handle embedding failures.
+
+Do not silently continue if embedding generation fails.
+
+---
+
+# VECTOR STORE
+
+Use FAISS for local vector similarity search.
+
+Keep metadata separately.
+
+The implementation should maintain a mapping similar to:
+
+```text
+FAISS vector ID
+        ↓
+metadata record
+        ↓
+document
+chunk_id
+page
+text
+```
+
+Make source retrieval reliable.
+
+If persistence can be implemented safely within the remaining time, persist the FAISS index and metadata.
+
+Otherwise, document that the vector store is in-memory/local and state the limitation honestly.
+
+---
+
+# RETRIEVAL
+
+For every query:
+
+1. Embed query.
+2. Search FAISS.
+3. Retrieve Top-K candidates.
+4. Calculate/use similarity scores.
+5. Apply relevance filtering.
+6. Return relevant chunks.
+
+Make:
+
+`TOP_K`
+
+configurable.
+
+Start with approximately:
+
+`TOP_K = 5`
+
+but treat it as an initial choice rather than a universal optimum.
+
+---
+
+# IMPORTANT: SIMILARITY THRESHOLD
+
+Do NOT blindly invent a threshold and call it scientifically correct.
+
+Because FAISS index configuration and similarity metric affect score interpretation, determine the score behavior experimentally if possible.
+
+Run a small test.
+
+Use:
+
+* Clearly relevant question
+* Clearly irrelevant question
+
+Observe scores.
+
+Then choose a reasonable initial threshold.
+
+Document that it is empirical and limited.
+
+If a reliable threshold cannot be established in the available time, implement a conservative heuristic and explicitly document the limitation.
+
+---
+
+# UNKNOWN ANSWER HANDLING
+
+THIS IS MANDATORY.
+
+Example:
+
+The document discusses:
+
+> Employee leave policy.
+
+The user asks:
+
+> What is the company's stock price?
+
+The system must NOT invent an answer.
+
+Implement:
+
+```text
+Question
+↓
+Retrieve candidates
+↓
+Check relevance
+↓
+Insufficient relevance
+↓
+Return:
+
+"The answer could not be found in the provided documents."
+```
+
+Do not send obviously irrelevant chunks to the LLM just to force an answer.
+
+---
+
+# GROUNDED GENERATION
+
+If relevant chunks exist, construct a prompt containing:
+
+* Retrieved context
+* User question
+* Strong grounding instructions
+
+Use a prompt similar to:
+
+```text
+You are a document question-answering assistant.
+
+Answer the user's question using ONLY the provided document context.
+
+Do not use outside knowledge.
+
+Do not invent or infer unsupported facts.
+
+If the provided context does not contain enough information to answer the question, say:
+
+"The answer could not be found in the provided documents."
+
+Context:
+{retrieved_chunks}
+
+Question:
+{question}
+```
+
+Keep the prompt simple.
+
+Do not add unnecessary prompt engineering.
+
+---
+
+# SOURCE ATTRIBUTION
+
+The response MUST include the retrieved source chunks.
+
+Use a structure similar to:
+
+```json
+{
+  "answer": "The refund period is 30 days.",
+  "sources": [
+    {
+      "document": "policy.pdf",
+      "chunk_id": 4,
+      "page": 3,
+      "similarity": 0.82,
+      "text": "Customers may request..."
+    }
+  ]
+}
+```
+
+The exact structure can be improved if needed.
+
+Make sure source metadata is actually connected to the retrieved vector.
+
+Do not fabricate source references.
+
+---
+
+# FASTAPI
+
+Implement:
+
+```text
+GET /health
+
+POST /documents/upload
+
+POST /query
+```
+
+Use Pydantic models.
+
+Example query:
+
+```json
+{
+  "question": "What is the refund policy?"
+}
+```
+
+Validate:
+
+* Empty question
+* Whitespace-only question
+* Missing fields
+* Invalid types
+
+Return appropriate HTTP status codes.
+
+---
+
+# ERROR HANDLING
+
+Handle at minimum:
+
+### Upload errors
+
+* Unsupported extension
+* Empty file
+* Corrupt PDF
+* No extractable text
+
+### Query errors
+
+* Empty question
+* No documents indexed
+* No relevant chunks
+
+### AI errors
+
+* Embedding model failure
+* LLM API failure
+* Timeout
+* Invalid model response
+
+Do not expose API keys or sensitive exception details.
+
+Use useful logging.
+
+---
+
+# CONFIGURATION
+
+Use environment variables.
+
+Create:
+
+`.env.example`
+
+For example:
+
+```text
+LLM_API_KEY=your_api_key_here
+EMBEDDING_MODEL=...
+CHUNK_SIZE=500
+CHUNK_OVERLAP=75
+TOP_K=5
+SIMILARITY_THRESHOLD=...
+```
+
+Do NOT put actual secrets into the repository.
+
+Add `.env` to `.gitignore`.
+
+---
+
+# TESTING
+
+Do not spend hours writing a huge test suite.
+
+Create a small but meaningful test set.
+
+Test:
+
+## Test 1 — Answer exists
+
+Question clearly answered by document.
+
+Expected:
+
+Relevant answer + source chunks.
+
+## Test 2 — Paraphrased question
+
+Question uses different wording.
+
+Expected:
+
+Semantic retrieval still finds the relevant chunk.
+
+## Test 3 — Answer absent
+
+Expected:
+
+Not-found response.
+
+## Test 4 — Unrelated question
+
+Expected:
+
+Not-found response.
+
+## Test 5 — Multiple chunks
+
+Question requires information from multiple chunks.
+
+Expected:
+
+Multiple relevant sources.
+
+## Test 6 — Invalid file
+
+Expected:
+
+Clean validation error.
+
+---
+
+# RETRIEVAL EVALUATION
+
+If time allows, create a tiny evaluation script.
+
+Approximately 10 questions is enough.
+
+Record:
+
+* Expected relevant chunk
+* Retrieved Top-K
+* Hit@K
+* Retrieval latency
+
+Do NOT spend more than approximately 30 minutes on this.
+
+If full evaluation is not possible, at minimum measure:
+
+**end-to-end query latency**
+
+and/or
+
+**retrieval latency**.
+
+Use actual measured results.
+
+Never fabricate numbers.
+
+---
+
+# README
+
+Create a clear README.
+
+It must include:
+
+## Project Overview
+
+What the system does.
+
+## Architecture
+
+Explain the RAG pipeline.
+
+## Features
+
+PDF/TXT, embeddings, retrieval, grounded answers, sources.
+
+## Tech Stack
+
+Explain why each technology was selected.
+
+## Setup
+
+Provide exact installation commands.
+
+## Environment Variables
+
+Explain `.env`.
+
+## Running
+
+Provide exact commands.
+
+For example:
+
+```bash
+pip install -r requirements.txt
+uvicorn app.main:app --reload
+```
+
+Only use commands that actually work.
+
+## API Usage
+
+Show:
+
+* Upload request
+* Query request
+* Example response
+
+## Chunking Strategy
+
+Explain the selected initial chunk size and overlap.
+
+## Retrieval
+
+Explain Top-K and similarity filtering.
+
+## Unknown Questions
+
+Explain how unsupported questions are handled.
+
+## Error Handling
+
+Explain major failures.
+
+## Evaluation
+
+Include only ACTUAL measurements.
+
+## Limitations
+
+Be honest.
+
+Examples:
+
+* No OCR
+* Local vector store
+* No authentication
+* No frontend
+* Small evaluation dataset
+
+## Future Improvements
+
+Mention:
+
+* Reranking
+* Hybrid search
+* Better parsing
+* Metadata filtering
+* Larger evaluation dataset
+* Production vector database
+
+---
+
+# DOCUMENTATION RULE
+
+DO NOT spend time generating:
+
+* 3 large PDFs
+* Enterprise PRDs
+* Huge UML documentation
+* Long design reports
+
+Those are NOT the priority now.
+
+The mandatory assessment explanation document is separate and should be produced later based on actual implementation results.
+
+---
+
+# GIT
+
+If this is a Git repository:
+
+Create real incremental commits.
+
+Suggested sequence:
+
+```text
+Initial RAG project setup
+Add PDF and TXT ingestion
+Implement document chunking
+Add embeddings and FAISS retrieval
+Add grounded LLM answering
+Add API validation and error handling
+Add retrieval tests
+Improve retrieval handling
+Complete README
+```
+
+Do not fabricate a historical commit timeline.
+
+If Git is not initialized, initialize it.
+
+---
+
+# FIVE-HOUR EXECUTION STRATEGY
+
+Use approximately:
+
+### 0:00–0:30
+
+Inspect workspace and environment.
+
+### 0:30–1:30
+
+Implement ingestion + extraction + chunking.
+
+### 1:30–2:30
+
+Implement embeddings + FAISS.
+
+### 2:30–3:30
+
+Implement retrieval + relevance filtering + LLM.
+
+### 3:30–4:00
+
+FastAPI + Pydantic + error handling.
+
+### 4:00–4:30
+
+Test supported and unsupported questions.
+
+### 4:30–4:50
+
+README + basic evaluation/latency.
+
+### 4:50–5:00
+
+Final verification.
+
+If something goes wrong, prioritize:
+
+```text
+Working API
+>
+Unknown-answer handling
+>
+Source attribution
+>
+Retrieval quality
+>
+Documentation
+>
+Optional polish
+```
+
+---
+
+# IMPORTANT: DO NOT GET STUCK
+
+If a particular library, model, API, or implementation approach causes problems for more than approximately 10–15 minutes:
+
+STOP.
+
+Choose the simplest reliable alternative.
+
+Do not spend the entire remaining time debugging an optional component.
+
+If a feature cannot be completed safely, implement the core system and document the limitation.
+
+---
+
+# IMPORTANT: ACTUALLY RUN THE CODE
+
+Do not assume the implementation works.
+
+After implementation:
+
+1. Install dependencies.
+2. Start the API.
+3. Upload a real PDF.
+4. Upload a real TXT file.
+5. Ask a question whose answer exists.
+6. Ask a question whose answer does not exist.
+7. Inspect source chunks.
+8. Test invalid input.
+9. Fix failures.
+10. Run again.
+
+The system must be demonstrated using an input that wasn't hardcoded into the implementation.
+
+---
+
+# IMPORTANT: DO NOT HARDCODE DEMO ANSWERS
+
+Do NOT:
+
+* hardcode expected questions
+* hardcode answers
+* hardcode source chunks
+* special-case demo documents
+
+The system must actually perform:
+
+document → chunks → embeddings → retrieval → LLM.
+
+---
+
+# EXPLANATION PREPARATION
+
+While building, keep track of REAL observations that I can later use for the mandatory one-page explanation document.
+
+Record:
+
+### Design decision
+
+Example:
+
+Chunk size and overlap.
+
+### Actual failure
+
+Something that genuinely failed during development.
+
+### Metric
+
+Actual latency/retrieval measurement.
+
+### Incomplete item
+
+Something we did not have time to implement.
+
+Do not fabricate any of these.
+
+At the end, create a short file such as:
+
+`BUILD_NOTES.md`
+
+containing:
+
+```text
+Design Decision:
+...
+
+Observed Failure:
+...
+
+Metric:
+...
+
+Measured Result:
+...
+
+Not Finished:
+...
+
+Next Step:
+...
+```
+
+Only include facts actually observed during this build.
+
+---
+
+# FINAL CHECKLIST
+
+Before declaring completion, verify:
+
+[ ] PDF upload works
+
+[ ] TXT upload works
+
+[ ] Text extraction works
+
+[ ] Chunking works
+
+[ ] Embeddings work
+
+[ ] FAISS retrieval works
+
+[ ] Query endpoint works
+
+[ ] Grounded LLM answer works
+
+[ ] Source chunks returned
+
+[ ] Unsupported questions don't produce fabricated answers
+
+[ ] Pydantic validation exists
+
+[ ] LLM/embedding errors handled
+
+[ ] `.env` ignored
+
+[ ] `.env.example` exists
+
+[ ] README exists
+
+[ ] Application actually runs
+
+[ ] Real test performed
+
+[ ] No secrets committed
+
+[ ] Git history contains meaningful commits
+
+---
+
+# FINAL OUTPUT
+
+When everything is complete, do NOT give me a huge explanation.
+
+Provide a concise status report:
+
+```text
+IMPLEMENTATION STATUS
+
+Working:
+- ...
+- ...
+- ...
+
+Tested:
+- Supported question: PASS
+- Unsupported question: PASS
+- PDF: PASS
+- TXT: PASS
+- Source attribution: PASS
+
+Known limitations:
+- ...
+
+Actual metric:
+- ...
+
+Actual observed failure:
+- ...
+
+Design decision:
+- ...
+
+Files created/modified:
+- ...
+
+Run command:
+- ...
+
+Next immediate step:
+- ...
+```
+
+If anything is broken, tell me exactly what is broken.
+
+Do NOT claim success without actually running the relevant functionality.
+
+START NOW.
+
+Do not ask me to confirm the plan.
+
+Inspect the workspace and begin implementation immediately.
