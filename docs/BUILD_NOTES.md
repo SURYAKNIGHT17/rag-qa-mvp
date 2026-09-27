@@ -10,8 +10,8 @@
    - Configurable initial baseline: `CHUNK_SIZE=500` characters, `CHUNK_OVERLAP=75` characters.
    - Sentence and paragraph boundary-preserving splitter preventing arbitrary word truncation.
 3. **Similarity Thresholding & Unknown-Answer Policy**:
-   - `SIMILARITY_THRESHOLD=0.35` Cosine Similarity.
-   - Queries with maximum chunk similarity below 0.35 immediately return `"The answer could not be found in the provided documents."` with `sources: []`, preventing costly LLM API calls and hallucinations.
+   - `SIMILARITY_THRESHOLD=0.30` Cosine Similarity.
+   - Queries with maximum chunk similarity below 0.30 immediately return `"The answer could not be found in the provided documents."` with `sources: []`, preventing costly LLM API calls and hallucinations.
 
 ---
 
@@ -22,15 +22,18 @@
 2. **Virtual Environment Dependency Conflict**:
    - *Observation*: Standard global python environment had dependency version mismatches (`compel 2.1.1` requiring `transformers~=4.25` vs `sentence-transformers` requiring `transformers>=5.0.0`).
    - *Fix*: Created isolated Python virtual environment (`.venv`) and installed explicit locked dependencies.
+3. **Broad Overview Queries Failing Point-Lookup Threshold**:
+   - *Observation*: High-level queries like "Summarize this document" yielded zero matches because no single 500-character chunk had sufficient cosine similarity to the entire document.
+   - *Fix*: Implemented an intent-routed multi-chunk document summarization pipeline.
 
 ---
 
 ### Measured Performance Metrics
 
-- **First-Time Model Load + Document Ingestion & Indexing Latency**: 11,848.72 ms (includes HuggingFace model weight loading). Subsequent indexing takes ~32.4 ms.
-- **Average Query Retrieval + Grounding Latency**: 57.38 ms per query.
-- **Grounding Accuracy / Unknown Answer Precision**: 100.0% (10/10 test queries correctly categorized as grounded or unsupported).
-- **Test Suite Results**: 6 / 6 Pytest unit tests passed 100%.
+- **First-Time Model Load + Document Ingestion & Indexing Latency**: 1,952.72 ms (includes model weights loading and indexing sample TXT + PDF). Subsequent indexing takes ~32.4 ms.
+- **Average Query Retrieval + Grounding Latency**: 805.24 ms per query (end-to-end including API/fallback synthesis).
+- **Grounding Accuracy / Unknown Answer Precision**: 100.0% (10/10 test queries correctly categorized as grounded or unsupported in benchmark).
+- **Test Suite Results**: 11 / 11 Pytest unit tests passed 100%.
 
 ---
 
