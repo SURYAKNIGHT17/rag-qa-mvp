@@ -51,8 +51,8 @@ def generate_explanation_pdf(output_path: str = "EXPLANATION.pdf"):
     # Section 1 Card
     sec1_title = "1. Design Parameter & Selection Rationale"
     sec1_content = [
-        ("Parameter Chosen", "Relevance Similarity Threshold (SIMILARITY_THRESHOLD = 0.35 Cosine Similarity) paired with CHUNK_SIZE = 500 characters (75 overlap)."),
-        ("Selection Rationale", "sentence-transformers/all-MiniLM-L6-v2 produces L2-normalized 384-d vectors where inner product in FAISS (IndexFlatIP) equals exact Cosine Similarity in [-1.0, 1.0]. Relevant queries produce scores 0.52-0.84, while out-of-domain queries yield scores below 0.28. A threshold of 0.35 rejects unsupported questions immediately with 'The answer could not be found in the provided documents.', eliminating hallucinations.")
+        ("Parameter Chosen", "Relevance Similarity Threshold (SIMILARITY_THRESHOLD = 0.30 Cosine Similarity) paired with CHUNK_SIZE = 500 characters (75 overlap)."),
+        ("Selection Rationale", "sentence-transformers/all-MiniLM-L6-v2 produces L2-normalized 384-d vectors where inner product in FAISS (IndexFlatIP) equals exact Cosine Similarity in [-1.0, 1.0]. Relevant queries produce scores 0.52-0.84, while out-of-domain queries yield scores below 0.28. A threshold of 0.30 rejects unsupported questions immediately with 'The answer could not be found in the provided documents.', eliminating hallucinations.")
     ]
     draw_section_card(104, 160, sec1_title, sec1_content)
 

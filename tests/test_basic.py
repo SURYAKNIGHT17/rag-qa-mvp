@@ -1,6 +1,7 @@
 import os
 import sys
 import io
+from unittest.mock import patch
 import pytest
 
 # Ensure workspace root is on Python path
@@ -37,25 +38,27 @@ def test_01_answer_exists():
     assert upload_resp.status_code == 201
     assert upload_resp.json()["chunks_created"] > 0
 
-    # 2. Query question answered by text
-    query_resp = client.post("/query", json={"question": "What is the customer refund period?"})
-    assert query_resp.status_code == 200
-    data = query_resp.json()
-    
-    assert data["answer"] != UNKNOWN_ANSWER_MESSAGE
-    assert len(data["sources"]) > 0
-    assert "30 days" in data["sources"][0]["text"].lower() or "30 days" in data["answer"].lower()
+    # 2. Query question answered by text (using transparent mock to avoid network dependencies)
+    with patch("app.main.generate_grounded_answer", return_value="Customers can request a full refund within 30 days of purchase."):
+        query_resp = client.post("/query", json={"question": "What is the customer refund period?"})
+        assert query_resp.status_code == 200
+        data = query_resp.json()
+        
+        assert data["answer"] != UNKNOWN_ANSWER_MESSAGE
+        assert len(data["sources"]) > 0
+        assert "30 days" in data["sources"][0]["text"].lower() or "30 days" in data["answer"].lower()
 
 
 def test_02_paraphrased_question():
     """Test 2 — Paraphrased question: Question uses different wording, semantic search still finds chunk."""
-    query_resp = client.post("/query", json={"question": "How long do users have to ask for their money back after purchase?"})
-    assert query_resp.status_code == 200
-    data = query_resp.json()
+    with patch("app.main.generate_grounded_answer", return_value="Users have up to 30 days to ask for a refund."):
+        query_resp = client.post("/query", json={"question": "How long do users have to ask for their money back after purchase?"})
+        assert query_resp.status_code == 200
+        data = query_resp.json()
 
-    assert data["answer"] != UNKNOWN_ANSWER_MESSAGE
-    assert len(data["sources"]) > 0
-    assert data["sources"][0]["document"] == "sample_leave_policy.txt"
+        assert data["answer"] != UNKNOWN_ANSWER_MESSAGE
+        assert len(data["sources"]) > 0
+        assert data["sources"][0]["document"] == "sample_leave_policy.txt"
 
 
 def test_03_answer_absent():
@@ -80,12 +83,13 @@ def test_04_unrelated_question():
 
 def test_05_multiple_chunks():
     """Test 5 — Multiple chunks: Question covering multiple topics retrieves multiple sources."""
-    query_resp = client.post("/query", json={"question": "Tell me about employee annual leave entitlement and wellness allowance."})
-    assert query_resp.status_code == 200
-    data = query_resp.json()
+    with patch("app.main.generate_grounded_answer", return_value="Full-time employees receive 25 days leave and a $500 wellness allowance."):
+        query_resp = client.post("/query", json={"question": "Tell me about employee annual leave entitlement and wellness allowance."})
+        assert query_resp.status_code == 200
+        data = query_resp.json()
 
-    assert data["answer"] != UNKNOWN_ANSWER_MESSAGE
-    assert len(data["sources"]) >= 1
+        assert data["answer"] != UNKNOWN_ANSWER_MESSAGE
+        assert len(data["sources"]) >= 1
 
 
 def test_06_invalid_file():
@@ -166,4 +170,32 @@ def test_11_dynamic_suggestions():
     assert doc_resp.status_code == 200
     doc_data = doc_resp.json()
     assert len(doc_data["suggestions"]) >= 3
+
+
+def test_12_llm_failure_returns_502():
+    """Test 12 — Error Propagation: When LLM generation fails, API returns HTTP 502 Bad Gateway."""
+    from app.generation import LLMGenerationError
+    with patch("app.main.generate_grounded_answer", side_effect=LLMGenerationError("Upstream API quota exceeded or timeout")):
+        query_resp = client.post("/query", json={"question": "What is the customer refund period?"})
+        assert query_resp.status_code == 502
+        data = query_resp.json()
+        assert "LLM generation failed" in data["detail"]
+        assert "Upstream API quota exceeded" in data["detail"]
+
+
+def test_13_generate_grounded_answer_raises_on_failure():
+    """Test 13 — Transparent Error Raising: generate_grounded_answer raises LLMGenerationError instead of masked fallback."""
+    from app.generation import generate_grounded_answer, LLMGenerationError
+    from app.models import SourceChunk
+    
+    dummy_sources = [
+        SourceChunk(document="doc.txt", chunk_id=1, page=1, similarity=0.85, text="Refund period is 30 days.")
+    ]
+    with patch("app.generation._call_gemini_api", side_effect=Exception("Connection refused")), \
+         patch("app.generation.settings.GEMINI_API_KEY", "dummy_key"), \
+         patch("app.generation.settings.LLM_API_KEY", ""):
+        with pytest.raises(LLMGenerationError) as exc_info:
+            generate_grounded_answer("What is refund period?", dummy_sources, allow_degraded_fallback=False)
+        assert "All configured LLM providers failed" in str(exc_info.value)
+
 

@@ -17,7 +17,7 @@ def create_user_manual_pdf(output_path: str = "RAG_System_User_Manual.pdf"):
     text_sec1 = """This RAG (Retrieval-Augmented Generation) system is an enterprise-grade document question-answering application. It allows users to upload PDF and TXT documents, extracts page-by-page text, chunks content into overlapping segments, generates 384-dimensional dense vector embeddings locally using SentenceTransformers (all-MiniLM-L6-v2), and performs exact Cosine Similarity search in FAISS.
 
 Key Feature: Hallucination Prevention Guardrails
-When a user asks a question whose relevance score falls below SIMILARITY_THRESHOLD (0.35), the system automatically blocks hallucination and returns: 'The answer could not be found in the provided documents.'"""
+When a user asks a question whose relevance score falls below SIMILARITY_THRESHOLD (0.30), the system automatically blocks hallucination and returns: 'The answer could not be found in the provided documents.'"""
     page1.insert_textbox(pymupdf.Rect(40, 120, 555, 230), text_sec1, fontsize=10, color=(0.2, 0.2, 0.2))
 
     # Section 2: Architecture Diagram
@@ -29,7 +29,7 @@ When a user asks a question whose relevance score falls below SIMILARITY_THRESHO
                                                                                |
 [Answer + Source Snippets] <-- [Grounded Prompt / LLM] <-- [FAISS Cosine Search] <-- [L2 Vectors (MiniLM)]
                                                                                |
-[User Question] ---------------> [Similarity Thresholding (>= 0.35)] -----------+"""
+[User Question] ---------------> [Similarity Thresholding (>= 0.30)] -----------+"""
     page1.insert_textbox(pymupdf.Rect(50, 310, 545, 440), arch_text, fontsize=9.5, color=(0.1, 0.1, 0.3))
 
     # Section 3: Tech Stack

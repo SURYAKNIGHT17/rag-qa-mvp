@@ -1,10 +1,20 @@
-from typing import List
+import logging
 import os
+from typing import List, Optional
+import httpx
 import openai
 from app.config import settings
 from app.models import SourceChunk
 
+logger = logging.getLogger(__name__)
+
 UNKNOWN_ANSWER_MESSAGE = "The answer could not be found in the provided documents."
+
+
+class LLMGenerationError(Exception):
+    """Raised when all configured LLM providers fail or are unconfigured."""
+    pass
+
 
 GROUNDED_PROMPT_TEMPLATE = """You are a document question-answering assistant.
 
@@ -40,10 +50,14 @@ Strictly ground all facts in the document text provided above. Do not invent any
 """
 
 
-def generate_grounded_answer(question: str, sources: List[SourceChunk]) -> str:
+def generate_grounded_answer(
+    question: str,
+    sources: List[SourceChunk],
+    allow_degraded_fallback: bool = False
+) -> str:
     """
     Generates a grounded answer using retrieved source chunks.
-    Supports Google Gemini API, OpenAI API, or Extractive Fallback.
+    Supports Google Gemini API, OpenAI API, or raises LLMGenerationError.
     """
     if not sources:
         return UNKNOWN_ANSWER_MESSAGE
@@ -57,13 +71,15 @@ def generate_grounded_answer(question: str, sources: List[SourceChunk]) -> str:
     gemini_key = settings.GEMINI_API_KEY or os.getenv("GEMINI_API_KEY", os.getenv("GOOGLE_API_KEY", ""))
     openai_key = settings.LLM_API_KEY or os.getenv("OPENAI_API_KEY", "")
 
+    errors = []
+
     # 1. Try Google Gemini API first if configured
     if gemini_key:
         try:
             return _call_gemini_api(prompt, gemini_key)
-        except Exception:
-            # Fall through to OpenAI or extractive fallback
-            pass
+        except Exception as e:
+            logger.warning("Gemini API call failed: %s", str(e))
+            errors.append(f"Gemini: {str(e)}")
 
     # 2. Try OpenAI API if configured (or as fallback from Gemini)
     if openai_key:
@@ -81,12 +97,23 @@ def generate_grounded_answer(question: str, sources: List[SourceChunk]) -> str:
             raw_content = response.choices[0].message.content
             if raw_content and raw_content.strip():
                 return raw_content.strip()
-        except Exception:
-            # Fall through to extractive fallback
-            pass
+            raise ValueError("OpenAI returned empty content.")
+        except Exception as e:
+            logger.warning("OpenAI API call failed: %s", str(e))
+            errors.append(f"OpenAI: {str(e)}")
 
-    # 3. Deterministic Extractive Grounded Fallback (when offline or APIs fail)
-    return _extractive_fallback_answer(question, sources)
+    if not gemini_key and not openai_key:
+        err_msg = "No LLM API keys configured. Set GEMINI_API_KEY or LLM_API_KEY in .env."
+        logger.warning(err_msg)
+        errors.append(err_msg)
+
+    # 3. Explicit degraded mode if enabled
+    if allow_degraded_fallback:
+        logger.warning("Falling back to degraded extractive answer mode.")
+        return _extractive_fallback_answer(question, sources)
+
+    # By default, raise transparent exception
+    raise LLMGenerationError(f"All configured LLM providers failed: {'; '.join(errors)}")
 
 
 def _call_gemini_api(prompt: str, api_key: str) -> str:
@@ -188,8 +215,8 @@ def generate_document_summary(chunks: list, document_name: str = "") -> str:
     if gemini_key:
         try:
             return _call_gemini_api(prompt, gemini_key)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Gemini summary generation failed: %s", str(e))
 
     # 2. Try OpenAI API
     if openai_key:
@@ -207,8 +234,8 @@ def generate_document_summary(chunks: list, document_name: str = "") -> str:
             raw = response.choices[0].message.content
             if raw and raw.strip():
                 return raw.strip()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("OpenAI summary generation failed: %s", str(e))
 
     # 3. Deterministic Extractive Summary Fallback (offline mode)
     header = f"### Executive Summary for {document_name or 'Uploaded Document'}\n\n"
@@ -262,8 +289,8 @@ Keep the Short Label under 3 words. Do not number the lines. Do not add markdown
     if gemini_key:
         try:
             raw_output = _call_gemini_api(prompt, gemini_key)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Gemini suggestions generation failed: %s", str(e))
 
     if not raw_output and openai_key:
         try:
@@ -275,8 +302,8 @@ Keep the Short Label under 3 words. Do not number the lines. Do not add markdown
                 max_tokens=250
             )
             raw_output = resp.choices[0].message.content
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("OpenAI suggestions generation failed: %s", str(e))
 
     if raw_output:
         parsed = []

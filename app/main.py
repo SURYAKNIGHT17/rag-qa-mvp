@@ -22,7 +22,8 @@ from app.generation import (
     generate_document_summary,
     generate_suggested_queries,
     is_summary_query,
-    UNKNOWN_ANSWER_MESSAGE
+    UNKNOWN_ANSWER_MESSAGE,
+    LLMGenerationError
 )
 from app.config import settings
 
@@ -274,6 +275,11 @@ def query_documents(request: QueryRequest):
     # 3. Grounded LLM generation
     try:
         answer = generate_grounded_answer(question, sources)
+    except LLMGenerationError as e:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"LLM generation failed: {str(e)}"
+        )
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
