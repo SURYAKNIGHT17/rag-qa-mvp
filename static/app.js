@@ -484,11 +484,15 @@ document.addEventListener("DOMContentLoaded", () => {
         answerText.textContent = data.answer;
         
         const isUnknown = data.answer.includes("could not be found");
+        const isFallback = data.is_extractive_fallback || data.answer.startsWith("[Extractive Fallback");
         if (isUnknown) {
           groundedBadge.textContent = "Not Found";
           groundedBadge.className = "badge badge-warning";
+        } else if (isFallback) {
+          groundedBadge.textContent = "Extractive Fallback";
+          groundedBadge.className = "badge badge-warning";
         } else {
-          groundedBadge.textContent = "100% Grounded";
+          groundedBadge.textContent = "Grounded Answer";
           groundedBadge.className = "badge badge-primary";
         }
 

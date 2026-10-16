@@ -50,6 +50,20 @@ Strictly ground all facts in the document text provided above. Do not invent any
 """
 
 
+import re
+
+def _sanitize_error_message(msg: str) -> str:
+    """
+    Sanitizes API keys, secrets, tokens, and authorization headers from error messages.
+    """
+    sanitized = re.sub(r'(AIza[0-9A-Za-z\-_]{35})', '[REDACTED_KEY]', str(msg))
+    sanitized = re.sub(r'(sk-[a-zA-Z0-9_\-]{20,})', '[REDACTED_KEY]', sanitized)
+    sanitized = re.sub(r'([?&]key=)[^&\s]+', r'\1[REDACTED_KEY]', sanitized, flags=re.IGNORECASE)
+    sanitized = re.sub(r'(x-goog-api-key["\']?\s*[:=]\s*["\']?)[^"\'\s,]+', r'\1[REDACTED_KEY]', sanitized, flags=re.IGNORECASE)
+    sanitized = re.sub(r'(authorization["\']?\s*[:=]\s*["\']?Bearer\s+)[^"\'\s,]+', r'\1[REDACTED_TOKEN]', sanitized, flags=re.IGNORECASE)
+    return sanitized
+
+
 def generate_grounded_answer(
     question: str,
     sources: List[SourceChunk],
@@ -58,6 +72,7 @@ def generate_grounded_answer(
     """
     Generates a grounded answer using retrieved source chunks.
     Supports Google Gemini API, OpenAI API, or raises LLMGenerationError.
+    When fallback is explicitly enabled, returns a clearly labeled extractive response.
     """
     if not sources:
         return UNKNOWN_ANSWER_MESSAGE
@@ -78,8 +93,9 @@ def generate_grounded_answer(
         try:
             return _call_gemini_api(prompt, gemini_key)
         except Exception as e:
-            logger.warning("Gemini API call failed: %s", str(e))
-            errors.append(f"Gemini: {str(e)}")
+            clean_err = _sanitize_error_message(str(e))
+            logger.warning("Gemini API call failed: %s", clean_err)
+            errors.append(f"Gemini: {clean_err}")
 
     # 2. Try OpenAI API if configured (or as fallback from Gemini)
     if openai_key:
@@ -99,8 +115,9 @@ def generate_grounded_answer(
                 return raw_content.strip()
             raise ValueError("OpenAI returned empty content.")
         except Exception as e:
-            logger.warning("OpenAI API call failed: %s", str(e))
-            errors.append(f"OpenAI: {str(e)}")
+            clean_err = _sanitize_error_message(str(e))
+            logger.warning("OpenAI API call failed: %s", clean_err)
+            errors.append(f"OpenAI: {clean_err}")
 
     if not gemini_key and not openai_key:
         err_msg = "No LLM API keys configured. Set GEMINI_API_KEY or LLM_API_KEY in .env."
@@ -110,9 +127,10 @@ def generate_grounded_answer(
     # 3. Explicit degraded mode if enabled
     if allow_degraded_fallback:
         logger.warning("Falling back to degraded extractive answer mode.")
-        return _extractive_fallback_answer(question, sources)
+        reason = "; ".join(errors) if errors else "No LLM API keys configured"
+        return _extractive_fallback_answer(question, sources, error_note=reason)
 
-    # By default, raise transparent exception
+    # By default, raise transparent exception without leaking secrets
     raise LLMGenerationError(f"All configured LLM providers failed: {'; '.join(errors)}")
 
 
@@ -156,14 +174,24 @@ def _call_gemini_api(prompt: str, api_key: str) -> str:
 
 def _extractive_fallback_answer(question: str, sources: List[SourceChunk], error_note: str = "") -> str:
     """
-    Provides a grounded fallback answer extracted directly from the most relevant source chunk
-    when no API key is active or when upstream LLM APIs error.
+    Provides a clearly labeled extractive fallback answer extracted directly from the most
+    relevant source chunk when no LLM API is active or when upstream LLM APIs fail.
+    Never masquerades raw text as an AI-synthesized answer.
     """
     if not sources:
         return UNKNOWN_ANSWER_MESSAGE
 
     top_source = sources[0]
-    return top_source.text.strip()
+    page_info = f" (Page {top_source.page})" if top_source.page else ""
+    note_suffix = f"\n\n*(Provider note: {error_note})*" if error_note else ""
+
+    return (
+        f"[Extractive Fallback - LLM Unavailable]\n\n"
+        f"{top_source.text.strip()}\n\n"
+        f"*(Note: This response is a direct passage excerpt from '{top_source.document}'{page_info}, "
+        f"Chunk #{top_source.chunk_id}. Generative answer synthesis was unavailable or encountered an upstream error.)*"
+        f"{note_suffix}"
+    )
 
 
 def is_summary_query(question: str) -> bool:
@@ -216,7 +244,7 @@ def generate_document_summary(chunks: list, document_name: str = "") -> str:
         try:
             return _call_gemini_api(prompt, gemini_key)
         except Exception as e:
-            logger.warning("Gemini summary generation failed: %s", str(e))
+            logger.warning("Gemini summary generation failed: %s", _sanitize_error_message(str(e)))
 
     # 2. Try OpenAI API
     if openai_key:
@@ -235,7 +263,7 @@ def generate_document_summary(chunks: list, document_name: str = "") -> str:
             if raw and raw.strip():
                 return raw.strip()
         except Exception as e:
-            logger.warning("OpenAI summary generation failed: %s", str(e))
+            logger.warning("OpenAI summary generation failed: %s", _sanitize_error_message(str(e)))
 
     # 3. Deterministic Extractive Summary Fallback (offline mode)
     header = f"### Executive Summary for {document_name or 'Uploaded Document'}\n\n"
@@ -290,7 +318,7 @@ Keep the Short Label under 3 words. Do not number the lines. Do not add markdown
         try:
             raw_output = _call_gemini_api(prompt, gemini_key)
         except Exception as e:
-            logger.warning("Gemini suggestions generation failed: %s", str(e))
+            logger.warning("Gemini suggestions generation failed: %s", _sanitize_error_message(str(e)))
 
     if not raw_output and openai_key:
         try:
@@ -303,7 +331,7 @@ Keep the Short Label under 3 words. Do not number the lines. Do not add markdown
             )
             raw_output = resp.choices[0].message.content
         except Exception as e:
-            logger.warning("OpenAI suggestions generation failed: %s", str(e))
+            logger.warning("OpenAI suggestions generation failed: %s", _sanitize_error_message(str(e)))
 
     if raw_output:
         parsed = []

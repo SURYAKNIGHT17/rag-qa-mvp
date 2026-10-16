@@ -1,6 +1,6 @@
 import os
 from typing import Optional, List
-from fastapi import FastAPI, UploadFile, File, HTTPException, status
+from fastapi import FastAPI, UploadFile, File, HTTPException, status, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -29,16 +29,17 @@ from app.config import settings
 
 app = FastAPI(
     title="RAG Question Answering MVP",
-    description="Production-ready grounded RAG QA system for PDF and TXT documents.",
+    description="Working RAG QA system for PDF and TXT documents.",
     version="1.0.0"
 )
 
-# CORS Middleware
+# CORS Middleware with restricted origins
+cors_origins_list = [orig.strip() for orig in settings.CORS_ORIGINS.split(",") if orig.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=cors_origins_list if cors_origins_list else ["http://localhost:8000", "http://127.0.0.1:8000"],
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "OPTIONS", "HEAD"],
     allow_headers=["*"],
 )
 
@@ -76,10 +77,17 @@ def health_check():
 
 
 @app.post("/documents/reset")
-def reset_documents():
+def reset_documents(x_admin_key: Optional[str] = Header(None, alias="X-Admin-Key")):
     """
     Clears all indexed documents, chunks, and FAISS vectors to start fresh.
+    Requires X-Admin-Key header if ADMIN_API_KEY is configured in settings.
     """
+    if settings.ADMIN_API_KEY:
+        if not x_admin_key or x_admin_key != settings.ADMIN_API_KEY:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Unauthorized: Valid X-Admin-Key header is required to reset documents."
+            )
     vector_store.reset()
     return {
         "status": "reset",
@@ -102,8 +110,31 @@ async def upload_document(file: UploadFile = File(...)):
         )
 
     filename = file.filename
+    max_bytes = settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024
+
+    status_413 = getattr(status, "HTTP_413_CONTENT_TOO_LARGE", status.HTTP_413_REQUEST_ENTITY_TOO_LARGE)
+
+    # Check Content-Length header if present
+    content_length = file.headers.get("content-length")
+    if content_length:
+        try:
+            if int(content_length) > max_bytes:
+                raise HTTPException(
+                    status_code=status_413,
+                    detail=f"Uploaded file exceeds maximum allowed limit of {settings.MAX_UPLOAD_SIZE_MB} MB."
+                )
+        except ValueError:
+            pass
+
     try:
-        content = await file.read()
+        content = await file.read(max_bytes + 1)
+        if len(content) > max_bytes:
+            raise HTTPException(
+                status_code=status_413,
+                detail=f"Uploaded file exceeds maximum allowed limit of {settings.MAX_UPLOAD_SIZE_MB} MB."
+            )
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -273,8 +304,18 @@ def query_documents(request: QueryRequest):
         )
 
     # 3. Grounded LLM generation
+    allow_fallback = (
+        request.allow_fallback
+        if request.allow_fallback is not None
+        else settings.ALLOW_EXTRACTIVE_FALLBACK
+    )
+
     try:
-        answer = generate_grounded_answer(question, sources)
+        answer = generate_grounded_answer(
+            question=question,
+            sources=sources,
+            allow_degraded_fallback=allow_fallback
+        )
     except LLMGenerationError as e:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
@@ -286,7 +327,12 @@ def query_documents(request: QueryRequest):
             detail=f"Answer generation error: {str(e)}"
         )
 
+    is_fallback = answer.startswith("[Extractive Fallback")
+    fallback_note = "LLM unavailable or failed; returned labeled excerpt" if is_fallback else None
+
     return QueryResponse(
         answer=answer,
-        sources=sources if answer != UNKNOWN_ANSWER_MESSAGE else []
+        sources=sources if answer != UNKNOWN_ANSWER_MESSAGE else [],
+        is_extractive_fallback=is_fallback,
+        fallback_reason=fallback_note
     )

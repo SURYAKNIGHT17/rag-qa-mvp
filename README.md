@@ -6,9 +6,9 @@
 [![SentenceTransformers](https://img.shields.io/badge/SentenceTransformers-all--MiniLM--L6--v2-brightgreen.svg)](https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-A high-performance, production-ready **Retrieval-Augmented Generation (RAG) System** built to answer user questions grounded strictly in uploaded **PDF** and **TXT** reference documents. 
+A robust, working **Retrieval-Augmented Generation (RAG) System MVP** built to answer user questions grounded in uploaded **PDF** and **TXT** reference documents. 
 
-Designed with strict hallucination prevention guardrails: if a question cannot be answered from the provided documents, the system guarantees an explicit unknown-answer response rather than fabricating unsupported claims.
+Designed with explicit grounding guardrails: if a question falls outside the scope of the provided documents or similarity is low, the system returns a clear unknown-answer refusal rather than fabricating unsupported claims. If LLM synthesis fails or is offline, extractive fallbacks are explicitly labeled.
 
 ---
 
@@ -22,13 +22,13 @@ Designed with strict hallucination prevention guardrails: if a question cannot b
 
 ### 2. Grounded Question Answering with Source Attributions
 ![Grounded Answer](docs/screenshots/02_grounded_answer.png)
-*Synthesized answer strictly grounded in retrieved passages, featuring exact document name, page number, retrieval similarity score (e.g. 0.69), response latency, and chunk excerpts.*
+*Synthesized answer grounded in retrieved passages, featuring exact document name, page number, retrieval similarity score, response latency, and chunk excerpts.*
 
 ---
 
-### 3. Strict Out-of-Domain Refusal Guardrail
+### 3. Out-of-Domain Refusal Guardrail
 ![Out of Domain Refusal](docs/screenshots/03_out_of_domain_refusal.png)
-*Strict anti-hallucination guardrail active: when user query similarity falls below the calibrated threshold, the system guarantees an explicit unknown-answer refusal rather than fabricating unsupported claims.*
+*Refusal guardrail active: when user query similarity falls below the calibrated threshold (SIMILARITY_THRESHOLD=0.30), the system returns an explicit unknown-answer refusal rather than fabricating unsupported claims.*
 
 ---
 
@@ -82,12 +82,12 @@ Designed with strict hallucination prevention guardrails: if a question cannot b
 1. **Document Extraction**: PDF files are processed page-by-page using PyMuPDF (`pymupdf`), preserving exact 1-based page numbers. TXT files are decoded using UTF-8 / fallback Latin-1.
 2. **Smart Chunking**: Text is split into overlapping 500-character segments with 75-character overlap. The chunker preserves sentence and paragraph boundaries to prevent word truncation.
 3. **Vector Embedding**: Text chunks are converted into 384-dimensional dense vectors using `sentence-transformers/all-MiniLM-L6-v2` and normalized to unit L2 length.
-4. **FAISS Indexing**: Embeddings are stored in FAISS `IndexFlatIP`. Because vectors are L2-normalized, inner product equals exact Cosine Similarity in `[-1.0, 1.0]`.
-5. **Relevance Filtering & Grounding Guardrails**: When a user query is received, FAISS retrieves Top-K candidates. If the highest similarity score falls below `SIMILARITY_THRESHOLD=0.30`, the system immediately returns `"The answer could not be found in the provided documents."` without making hallucinated LLM calls.
-6. **Multi-Provider LLM Answer Synthesis with Cascade**:
-   - **Primary**: Google Gemini 2.5 Flash using secure header authentication (`x-goog-api-key`).
-   - **Secondary**: Automatic fallback to OpenAI (`gpt-4o-mini`) if Gemini is unconfigured or rate-limited.
-   - **Offline / Local**: Deterministic extractive grounded fallback if no LLM APIs are reachable.
+4. **FAISS Indexing & Disk Persistence**: Embeddings are stored in FAISS `IndexFlatIP`. Vectors are L2-normalized so inner product equals exact Cosine Similarity. The index and metadata are automatically persisted to disk (`data/vector_store/index.faiss` and `metadata.json`) to retain indexed documents across application restarts.
+5. **Relevance Filtering & Hybrid Retrieval**: When a query is received, FAISS retrieves Top-K candidates (TOP_K = 5) with keyword-boosted re-ranking. If candidate similarity falls below `SIMILARITY_THRESHOLD=0.30`, the system returns `"The answer could not be found in the provided documents."` without querying LLMs.
+6. **Multi-Provider LLM Answer Synthesis with Failover**:
+   - **Primary**: Google Gemini API using secure header authentication (`x-goog-api-key`).
+   - **Secondary**: Automatic fallback to OpenAI (`gpt-4o-mini`) if Gemini fails or is unconfigured.
+   - **Provider Failure / Offline**: Raises a transparent `LLMGenerationError` (HTTP 502) by default, or returns a clearly labeled `[Extractive Fallback - LLM Unavailable]` excerpt if degraded mode is explicitly enabled (`ALLOW_EXTRACTIVE_FALLBACK=true`). Never masks raw passages as generated answers. Secrets/keys are strictly sanitized from logs and error messages.
 7. **Full-Document Executive Summarization**:
    - Synthesizes an executive overview, key metrics, and actionable takeaways across all sequential document chunks.
    - Available via dedicated `POST /documents/summary` API, natural language query detection (`"summarize this document"`), and one-click UI **"Summarize"** buttons.
@@ -174,11 +174,21 @@ LLM_MODEL=gpt-4o-mini
 EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
 CHUNK_SIZE=500
 CHUNK_OVERLAP=75
-TOP_K=3
+TOP_K=5
 SIMILARITY_THRESHOLD=0.30
+DATA_DIR=data
+PERSIST_DIRECTORY=data/vector_store
+
+# Security & Safeguards
+MAX_UPLOAD_SIZE_MB=10
+CORS_ORIGINS=http://localhost:8000,http://127.0.0.1:8000,http://localhost:3000
+ADMIN_API_KEY=
+
+# Fallback Mode
+ALLOW_EXTRACTIVE_FALLBACK=false
 ```
 
-> **Note**: Both API keys are optional. If neither is set, the system runs in offline Extractive Grounded Fallback Mode.
+> **Note**: Both LLM API keys are optional. If neither is set, queries produce an informative HTTP 502 error by default, or clearly labeled `[Extractive Fallback - LLM Unavailable]` passages if `ALLOW_EXTRACTIVE_FALLBACK=true`.
 
 ---
 
@@ -374,39 +384,44 @@ curl -X GET "http://127.0.0.1:8000/documents/suggestions?document=sample_leave_p
 ## 🧪 Running Tests & Evaluation
 
 ### Run Pytest Automated Suite
-Runs unit tests covering direct answer retrieval, paraphrased queries, unknown question handling, multiple chunk retrieval, and invalid file upload handling.
+Runs 19 automated unit and regression tests covering direct answer retrieval, paraphrased queries, unknown question handling, multiple chunk retrieval, invalid file handling, upload size limits (HTTP 413), provider failure cascades (HTTP 502), transparent extractive fallback labeling, secret scrubbing, vector store disk persistence, admin authentication on reset, and OCR limitation error messaging.
 
 ```bash
 pytest tests/test_basic.py -v
 ```
 
-### Run Performance Evaluation Script
-Evaluates 10 benchmark queries and records latency and grounding accuracy metrics.
+### Run Performance & Factual Correctness Evaluation
+Runs the rigorous multi-category evaluation benchmark verifying factual keyword presence, citation grounding, unsupported claim resistance, out-of-domain query refusal, and adversarial distractor rejection.
 
 ```bash
 python evaluation/evaluate.py
 ```
 
 ### Empirical Benchmark Results
-- **Pytest Suite Pass Rate**: `100.0% (11/11 passed)`
-- **Grounding Accuracy / Hit Rate**: `100.0% (10/10 correct)`
-- **Average Query Latency**: `~640 ms` (with LLM synthesis) / `~57 ms` (extractive fallback)
-- **Document Indexing Latency**: `~32 ms` (after initial model load)
+- **Automated Pytest Suite**: `100.0% (19/19 passed)`
+- **Factual Correctness Rate**: `100.0% (8/8 ground-truth verified)`
+- **Citation Grounding Rate**: `100.0% (8/8 supported by source chunk evidence)`
+- **Distractor / Refusal Accuracy**: `66.7%` (strict threshold refusal without LLM disambiguation)
+- **Overall Multi-Category Pass Rate**: `85.7% (12/14 passed)`
+- **Average Query Latency**: `~810 ms` (with embedding search & LLM cascade) / `~50 ms` (refusal cache)
+- **Document Indexing Latency**: `~680 ms` (end-to-end extraction, chunking, embedding, indexing, and disk persistence)
 
 ---
 
-## 📌 Limitations & Future Roadmap
+## 📌 Architectural Limitations & Future Roadmap
 
 ### Current MVP Limitations
-- **No OCR Support**: Scanned image PDFs without text layers return a 400 validation error.
-- **In-Memory Store**: Vector index is maintained in memory during runtime and resets upon server restart.
-- **No User Authentication**: Built as a minimal single-tenant service.
+1. **Semantic Similarity vs Factual Relevance**: FAISS retrieves chunks based on dense embedding cosine similarity. While similarity thresholding and keyword matching prune irrelevant passages, similarity alone does not guarantee a passage fully answers complex multi-hop queries.
+2. **No OCR Support**: Image-only or scanned PDFs without embedded text layers cannot be parsed and return a 400 Bad Request error explicitly notifying the user that OCR preprocessing is required.
+3. **Single-Tenant Storage**: The vector store and document indices are designed for a single user/tenant collection; per-user isolation or document-level access control lists (ACLs) are not implemented.
+4. **Local Disk Persistence**: FAISS index and chunk metadata are persisted to local files (`data/vector_store/`); horizontal scaling across multiple distributed workers requires a managed vector database (e.g., Qdrant, Milvus, or PgVector).
+5. **Extractive Fallback vs Generative Synthesis**: When upstream LLM APIs fail or are unconfigured, fallback mode provides verbatim document excerpts rather than synthesized natural language answers. These fallbacks are clearly labeled so users are never misled.
 
 ### Future Enhancements
-- [ ] Add vector index disk persistence (`faiss.write_index` / `faiss.read_index`).
-- [ ] Integrate Cross-Encoder reranking (`ms-marco-MiniLM-L-6-v2`) for improved Top-3 precision.
+- [ ] Integrate Cross-Encoder reranking (`ms-marco-MiniLM-L-6-v2`) for enhanced Top-K precision on ambiguous queries.
 - [ ] Add Tesseract OCR for scanned PDF image extraction.
 - [ ] Implement multi-tenant authentication and document access control (ACLs).
+- [ ] Add streaming response generation for real-time token delivery in the web UI.
 
 ---
 

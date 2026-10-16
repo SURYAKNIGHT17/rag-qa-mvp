@@ -10,6 +10,7 @@ class UploadResponse(BaseModel):
 
 class QueryRequest(BaseModel):
     question: str = Field(..., description="The user question to be answered.")
+    allow_fallback: Optional[bool] = Field(None, description="Explicitly allow degraded extractive fallback if LLMs fail.")
 
     @field_validator("question")
     @classmethod
@@ -31,6 +32,8 @@ class SourceChunk(BaseModel):
 class QueryResponse(BaseModel):
     answer: str
     sources: List[SourceChunk] = []
+    is_extractive_fallback: bool = False
+    fallback_reason: Optional[str] = None
 
 
 class HealthResponse(BaseModel):

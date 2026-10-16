@@ -199,3 +199,110 @@ def test_13_generate_grounded_answer_raises_on_failure():
         assert "All configured LLM providers failed" in str(exc_info.value)
 
 
+def test_14_extractive_fallback_labeled_clearly():
+    """Test 14 — Extractive Fallback Labeling: When degraded fallback is enabled, answer is clearly labeled and flagged."""
+    from app.generation import generate_grounded_answer
+    from app.models import SourceChunk
+    
+    dummy_sources = [
+        SourceChunk(document="policy.txt", chunk_id=0, page=1, similarity=0.88, text="Full refund within 30 days of purchase.")
+    ]
+    with patch("app.generation._call_gemini_api", side_effect=Exception("Gemini quota error")), \
+         patch("app.generation.settings.GEMINI_API_KEY", "test_key"), \
+         patch("app.generation.settings.LLM_API_KEY", ""):
+        answer = generate_grounded_answer("What is refund period?", dummy_sources, allow_degraded_fallback=True)
+        assert answer.startswith("[Extractive Fallback - LLM Unavailable]")
+        assert "policy.txt" in answer
+        assert "Full refund within 30 days" in answer
+
+
+def test_15_secrets_redacted_in_errors():
+    """Test 15 — Secret Redaction: API keys and auth tokens are sanitized from error messages and logs."""
+    from app.generation import _sanitize_error_message
+    
+    raw_error = "Failed to authenticate with key=AIzaSyA1B2C3D4E5F6G7H8I9J0K1L2M3N4O5P6Q and Authorization: Bearer sk-proj-1234567890abcdef1234"
+    sanitized = _sanitize_error_message(raw_error)
+    assert "AIzaSy" not in sanitized
+    assert "sk-proj-1234567890abcdef1234" not in sanitized
+    assert "[REDACTED_KEY]" in sanitized or "[REDACTED_TOKEN]" in sanitized
+
+
+def test_16_upload_size_limit_exceeded():
+    """Test 16 — Upload Size Limit: Uploads exceeding MAX_UPLOAD_SIZE_MB are rejected with HTTP 413."""
+    from app.config import settings
+    # Create fake oversized stream
+    oversized_bytes = b"A" * (settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024 + 1024)
+    resp = client.post(
+        "/documents/upload",
+        files={"file": ("large_doc.txt", io.BytesIO(oversized_bytes), "text/plain")}
+    )
+    assert resp.status_code == 413
+    assert "exceeds maximum allowed limit" in resp.json()["detail"]
+
+
+def test_17_vector_store_disk_persistence(tmp_path):
+    """Test 17 — Persistence: Vector store saves index and metadata to disk and reloads correctly."""
+    from app.retrieval import VectorStore
+    from app.chunking import ChunkRecord
+    
+    persist_dir = str(tmp_path / "test_store")
+    vs1 = VectorStore(persist_dir=persist_dir)
+    chunks = [
+        ChunkRecord(document="handbook.txt", chunk_id=0, page=1, text="Office hours are 9 AM to 5 PM."),
+        ChunkRecord(document="handbook.txt", chunk_id=1, page=1, text="Friday casual dress code applies.")
+    ]
+    vs1.add_chunks(chunks)
+    assert vs1.total_chunks == 2
+    assert "handbook.txt" in vs1.indexed_documents
+
+    # Initialize a new store pointing to the same directory
+    vs2 = VectorStore(persist_dir=persist_dir)
+    assert vs2.total_chunks == 2
+    assert "handbook.txt" in vs2.indexed_documents
+    doc_chunks = vs2.get_document_chunks("handbook.txt")
+    assert len(doc_chunks) == 2
+    assert doc_chunks[0].text == "Office hours are 9 AM to 5 PM."
+
+    # Test reset clears disk files
+    vs2.reset()
+    assert vs2.total_chunks == 0
+    vs3 = VectorStore(persist_dir=persist_dir)
+    assert vs3.total_chunks == 0
+
+
+def test_18_admin_key_protected_reset():
+    """Test 18 — Admin Authentication: /documents/reset enforces ADMIN_API_KEY when configured."""
+    from app.config import settings
+    with patch.object(settings, "ADMIN_API_KEY", "super_secret_admin_key"):
+        # Without key -> 401 Unauthorized
+        resp_unauth = client.post("/documents/reset")
+        assert resp_unauth.status_code == 401
+        assert "Unauthorized" in resp_unauth.json()["detail"]
+
+        # With invalid key -> 401
+        resp_bad = client.post("/documents/reset", headers={"X-Admin-Key": "wrong_key"})
+        assert resp_bad.status_code == 401
+
+        # With correct key -> 200 OK
+        resp_ok = client.post("/documents/reset", headers={"X-Admin-Key": "super_secret_admin_key"})
+        assert resp_ok.status_code == 200
+        assert resp_ok.json()["status"] == "reset"
+
+
+def test_19_scanned_pdf_ocr_message():
+    """Test 19 — OCR Limitation Notice: Empty/scanned PDF raises descriptive OCR limitation error."""
+    import pymupdf
+    # Create empty PDF in memory
+    empty_pdf = pymupdf.open()
+    empty_pdf.new_page()  # Blank page with no text
+    pdf_bytes = empty_pdf.write()
+    empty_pdf.close()
+
+    resp = client.post(
+        "/documents/upload",
+        files={"file": ("blank_scanned.pdf", io.BytesIO(pdf_bytes), "application/pdf")}
+    )
+    assert resp.status_code == 400
+    assert "OCR preprocessing" in resp.json()["detail"]
+
+

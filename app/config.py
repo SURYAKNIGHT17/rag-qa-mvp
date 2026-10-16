@@ -15,5 +15,10 @@ class Settings:
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", os.getenv("GOOGLE_API_KEY", ""))
     GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
     DATA_DIR: str = os.getenv("DATA_DIR", "data")
+    PERSIST_DIRECTORY: str = os.getenv("PERSIST_DIRECTORY", os.path.join(os.getenv("DATA_DIR", "data"), "vector_store"))
+    MAX_UPLOAD_SIZE_MB: int = int(os.getenv("MAX_UPLOAD_SIZE_MB", "10"))
+    CORS_ORIGINS: str = os.getenv("CORS_ORIGINS", "http://localhost:8000,http://127.0.0.1:8000,http://localhost:3000")
+    ADMIN_API_KEY: str = os.getenv("ADMIN_API_KEY", "")
+    ALLOW_EXTRACTIVE_FALLBACK: bool = os.getenv("ALLOW_EXTRACTIVE_FALLBACK", "false").lower() in ("true", "1", "yes")
 
 settings = Settings()

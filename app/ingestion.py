@@ -25,7 +25,7 @@ def extract_text_from_pdf(file_bytes: bytes) -> List[Tuple[int, str]]:
     doc.close()
 
     if not pages_text:
-        raise ValueError("PDF file contains no extractable text.")
+        raise ValueError("PDF file contains no extractable text. Scanned or image-only PDFs require OCR preprocessing, which is not supported in this MVP.")
 
     return pages_text
 
