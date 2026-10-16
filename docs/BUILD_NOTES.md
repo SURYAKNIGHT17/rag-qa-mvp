@@ -30,20 +30,29 @@
 
 ### Measured Performance Metrics
 
-- **First-Time Model Load + Document Ingestion & Indexing Latency**: 1,952.72 ms (includes model weights loading and indexing sample TXT + PDF). Subsequent indexing takes ~32.4 ms.
-- **Average Query Retrieval + Grounding Latency**: 805.24 ms per query (end-to-end including API/fallback synthesis).
-- **Grounding Accuracy / Unknown Answer Precision**: 100.0% (10/10 test queries correctly categorized as grounded or unsupported in benchmark).
-- **Test Suite Results**: 11 / 11 Pytest unit tests passed 100%.
+### Measured Performance Metrics
+
+- **First-Time Model Load + Document Ingestion & Indexing Latency**: ~680 ms (includes model weights loading, embedding generation, FAISS indexing, and disk persistence).
+- **Average Query Retrieval + Grounding Latency**: ~810 ms per query (end-to-end including vector search & synthesis).
+- **Grounding & Citation Correctness**: 100.0% (8/8 ground-truth facts verified in returned source citations).
+- **Test Suite Results**: 19 / 19 Pytest automated tests passed (100%).
+
+---
+
+### Hardening & Features Implemented
+1. **Vector DB Disk Persistence**: Added file-backed persistence to `data/vector_store/` using `faiss.write_index` and `metadata.json`, automatically reloaded on restart.
+2. **Secret Redaction & Safe Error Handling**: Added `_sanitize_error_message` preventing API keys or bearer tokens from appearing in logs or HTTP responses. Unhandled LLM failures return HTTP 502 with informative details.
+3. **Upload Safeguards & API Protection**: Enforced `MAX_UPLOAD_SIZE_MB=10` returning HTTP 413, restricted CORS to trusted origins, and added optional `X-Admin-Key` header authentication on `/documents/reset`.
+4. **Transparent Extractive Fallback**: If LLMs fail and fallback is enabled, responses are clearly labeled `[Extractive Fallback - LLM Unavailable]` and flagged in the API response.
 
 ---
 
 ### Items Not Finished (Scope & Time Limits)
-1. **OCR Support**: Scanned image-only PDFs return explicit error (`PDF file contains no extractable text.`).
-2. **Vector DB Persistence**: Index currently kept in-memory for MVP speed. Index can be saved to disk via `faiss.write_index` if needed in production.
-3. **User Authentication & Role-based Document ACLs**: Omitted as instructed.
+1. **OCR Support**: Scanned image-only PDFs return an explicit error explaining OCR preprocessing is required.
+2. **User Authentication & Document Isolation**: Built as a single-tenant collection; per-user isolation or document ACLs omitted.
 
 ---
 
 ### Immediate Next Steps
-1. Add `faiss.write_index` / `faiss.read_index` disk persistence for index reloading across server restarts.
-2. Implement cross-encoder reranking (e.g. `ms-marco-MiniLM-L-6-v2`) to boost Top-3 precision on complex queries.
+1. Implement cross-encoder reranking (e.g. `ms-marco-MiniLM-L-6-v2`) to boost Top-3 precision on complex queries.
+2. Add Tesseract OCR for scanned PDF image extraction.
